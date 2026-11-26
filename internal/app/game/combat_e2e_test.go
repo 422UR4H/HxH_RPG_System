@@ -14,6 +14,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -219,7 +220,8 @@ func (f *combatFixture) seatNPC(t *testing.T, session *matchsession.MatchSession
 	if f.npcID == uuid.Nil {
 		return
 	}
-	if err := session.AddNPC(f.npcID, newCombatSheet(t), f.masterUUID); err != nil {
+	// Robusto como a vítima: o golpe crítico do fixture não o mata (newSturdyCombatSheet).
+	if err := session.AddNPC(f.npcID, newSturdyCombatSheet(t), f.masterUUID); err != nil {
 		t.Fatalf("seat the NPC target: %v", err)
 	}
 }
@@ -251,7 +253,7 @@ func (f *combatFixture) newSheetsAndParticipants(t *testing.T) (
 	map[uuid.UUID]*csSheet.CharacterSheet, []*match.Participant,
 ) {
 	t.Helper()
-	f.victim = newCombatSheet(t)
+	f.victim = newSturdyCombatSheet(t)
 	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
 		f.attackerID: newCombatSheet(t),
 		f.victimID:   f.victim,
@@ -512,6 +514,20 @@ func newCombatSheet(t *testing.T) *csSheet.CharacterSheet {
 	return cs
 }
 
+// newSturdyCombatSheet é o newCombatSheet com o máximo negativo do HP um pouco maior (Vitality
+// treinada; o HP cheio continua o mesmo): com os dados no topo, o golpe do fixture é crítico e
+// deixa a vítima em -12, um além do mínimo da ficha nua (-10) — e o Morto entra no fechamento
+// (fase 2 dos efeitos de status). Os testes que não falam de morte batem uma vez e seguem com a
+// vítima viva; os de morte põem o HP no mínimo de propósito.
+func newSturdyCombatSheet(t *testing.T) *csSheet.CharacterSheet {
+	t.Helper()
+	cs := newCombatSheet(t)
+	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(200), enum.Vitality); err != nil {
+		t.Fatalf("IncreaseExpForSkill(Vitality): %v", err)
+	}
+	return cs
+}
+
 // victimHP reads the live sheet. The room mutates that same sheet from its own goroutine,
 // so callers must only read it when no message is in flight — before anything is sent, and
 // after the writer has confirmed the close persisted.
@@ -723,15 +739,16 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 		if !opened.Action.IsCritical {
 			t.Error("every die landed on its top face, so this must read as a critical")
 		}
-		if opened.Action.Total != 20 {
-			t.Errorf("Total = %d, want 20 (10 + 10, skills at 0)", opened.Action.Total)
+		// O crítico dobra o total do teste (MatchRules.CriticalTotal): (10 + 10 + 0) × 2.
+		if opened.Action.Total != 40 {
+			t.Errorf("Total = %d, want 40 ((10 + 10, skills at 0) doubled by the critical)", opened.Action.Total)
 		}
 		if opened.Action.Margin == nil {
 			t.Fatal("the margin must be derived once the dodge gives the attack a CD")
 		}
 		// The passive reflex dodge is Reflex(0) + 11.
-		if *opened.Action.Margin != 20-11 {
-			t.Errorf("Margin = %d, want %d", *opened.Action.Margin, 20-11)
+		if *opened.Action.Margin != 40-11 {
+			t.Errorf("Margin = %d, want %d", *opened.Action.Margin, 40-11)
 		}
 		if len(opened.Targets) != 1 {
 			t.Fatalf("Targets = %+v, want one entry", opened.Targets)
@@ -741,18 +758,20 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 			t.Errorf("TargetID = %v, want %v", tgt.TargetID, f.victimID)
 		}
 		if tgt.Avoided {
-			t.Error("a total of 20 must beat the passive dodge of 11")
+			t.Error("a total of 40 must beat the passive dodge of 11")
 		}
-		if !tgt.Defended {
-			t.Error("the passive defense should succeed at a CD one ladder step lower")
+		// A defesa passiva (11) enfrenta a CD um degrau abaixo do acerto: 40 − 10 = 30.
+		if tgt.Defended {
+			t.Error("the critical's 40 puts the defense CD at 30, beyond the passive defense of 11")
 		}
 		// A Sword is D10 + D4 with a flat 2: 10 + 4 + 2 = 16. An armed attack against a
 		// bare-handed defense is not reduced while damage types do not exist.
 		if tgt.RawDamage != 16 {
 			t.Errorf("RawDamage = %d, want 16 (10 + 4 dice + 2 flat)", tgt.RawDamage)
 		}
-		if tgt.ProjectedDamage != 16 {
-			t.Errorf("ProjectedDamage = %d, want 16", tgt.ProjectedDamage)
+		// O acerto crítico dobra o dano final (MatchRules.CriticalDamage): 16 × 2.
+		if tgt.ProjectedDamage != 32 {
+			t.Errorf("ProjectedDamage = %d, want 32 (16 doubled by the critical hit)", tgt.ProjectedDamage)
 		}
 		projected = tgt.ProjectedDamage
 	})
@@ -1093,25 +1112,25 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 	// Legerity is 0 on a factory sheet, so actionSpeed IS the dice total. Both enqueued actions
 	// below carry Attack{Hit: Accuracy} with no Weapon (unarmed → Fist, 3 damage dice), and
 	// rollActionDice rolls EVERY check an action carries, once, at enqueue time — not just
-	// Speed. Each action therefore consumes, in this order: Speed (2D10 primary + 2D10
-	// secondary — only the primary pair sums into the result), Hit (same 4-face shape), then
-	// Damage (Fist's 3 dice). 11 faces per action, 22 total, attacker enqueued before victim:
+	// Speed. Each action therefore consumes, in this order: Speed (o conjunto 2D10 — Roll não
+	// rola extras; eles só caem quando um viés os pede), Hit (same 2-face shape), then
+	// Damage (Fist's 3 dice). 7 faces per action, 14 total, attacker enqueued before victim:
 	//
-	//	attacker Speed   faces[ 0: 4] = 3,3,3,3 → primary 3+3 = 6   (asserted: the frozen price)
-	//	attacker Hit     faces[ 4: 8] = 5,5,5,5 → unasserted
-	//	attacker Damage  faces[ 8:11] = 2,2,2   → unasserted
-	//	victim   Speed   faces[11:15] = 8,8,8,8 → primary 8+8 = 16  (asserted: leads the bar)
-	//	victim   Hit     faces[15:19] = 5,5,5,5 → unasserted
-	//	victim   Damage  faces[19:22] = 2,2,2   → unasserted
+	//	attacker Speed   faces[ 0: 2] = 3,3   → 3+3 = 6   (asserted: the frozen price)
+	//	attacker Hit     faces[ 2: 4] = 5,5   → unasserted
+	//	attacker Damage  faces[ 4: 7] = 2,2,2 → unasserted
+	//	victim   Speed   faces[ 7: 9] = 8,8   → 8+8 = 16  (asserted: leads the bar)
+	//	victim   Hit     faces[ 9:11] = 5,5   → unasserted
+	//	victim   Damage  faces[11:14] = 2,2,2 → unasserted
 	//
-	// scriptedFaces fails loudly on any roll past face 22 instead of repeating one, so both
+	// scriptedFaces fails loudly on any roll past face 14 instead of repeating one, so both
 	// asserted numbers are provably driven by the script, not a coincidence of a fallback.
 	src := &scriptedFaces{faces: []int{
-		3, 3, 3, 3, // attacker speed  (asserted: 6)
-		5, 5, 5, 5, // attacker hit    (unasserted)
+		3, 3, // attacker speed  (asserted: 6)
+		5, 5, // attacker hit    (unasserted)
 		2, 2, 2, // attacker damage    (unasserted)
-		8, 8, 8, 8, // victim speed    (asserted: 16)
-		5, 5, 5, 5, // victim hit      (unasserted)
+		8, 8, // victim speed    (asserted: 16)
+		5, 5, // victim hit      (unasserted)
 		2, 2, 2, // victim damage      (unasserted)
 	}}
 	f.setRollSource(src)
@@ -1260,11 +1279,11 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 func TestE2E_PlayerBarsShowOnlyWhatTheMasterOpened(t *testing.T) {
 	f := newCombatFixture(t)
 	src := &scriptedFaces{faces: []int{
-		3, 3, 3, 3, // attacker speed: 6
-		5, 5, 5, 5, // attacker hit
+		3, 3, // attacker speed: 6
+		5, 5, // attacker hit
 		2, 2, 2, // attacker damage
-		8, 8, 8, 8, // victim speed: 16
-		5, 5, 5, 5, // victim hit
+		8, 8, // victim speed: 16
+		5, 5, // victim hit
 		2, 2, 2, // victim damage
 	}}
 	f.setRollSource(src)

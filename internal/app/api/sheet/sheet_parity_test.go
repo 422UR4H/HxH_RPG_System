@@ -319,3 +319,39 @@ func TestSheetParityFixtures(t *testing.T) {
 			parityPath)
 	}
 }
+
+// TestNegativeMax confere o mínimo negativo da barra de HP (spec §7) contra fichas
+// montadas pelo mesmo caminho das fixtures de paridade: min = -⌊10 + nível de Vitality
+// + valor de Resistance + bônus de Físicos⌋.
+func TestNegativeMax(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantMax int
+		wantMin int
+	}{
+		{"Netrunner/class-only", 20, -14},
+		{"Samurai/class-only", 20, -15},
+		{"Hunter/points-spread", 30, -17},
+		{"Monk/class-only", 51, -21},
+		{"Ninja/profs-points-concentrated", 75, -25},
+	}
+	cases := make(map[string]parityCase)
+	for _, c := range buildParityFile(t).Cases {
+		cases[c.Name] = c
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, ok := cases[tt.name]
+			if !ok {
+				t.Fatalf("caso %s não existe nas fixtures", tt.name)
+			}
+			health := c.Expected["status"].(map[string]any)["health"].(map[string]any)
+			if got := int(health["max"].(float64)); got != tt.wantMax {
+				t.Errorf("HP max: got %d, want %d", got, tt.wantMax)
+			}
+			if got := int(health["min"].(float64)); got != tt.wantMin {
+				t.Errorf("HP min: got %d, want %d", got, tt.wantMin)
+			}
+		})
+	}
+}

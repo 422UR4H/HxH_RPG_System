@@ -104,3 +104,66 @@ func TestMatchRules_ResolveFogMode(t *testing.T) {
 		}
 	})
 }
+
+func TestCriticalTotal(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      int
+		critical bool
+		failure  bool
+		want     int
+	}{
+		{"critical doubles", 28, true, false, 56},
+		{"failure halves down", 25, false, true, 12},
+		{"failure floors negatives", -3, false, true, -2},
+		{"neutral keeps", 17, false, false, 17},
+	}
+	r := match.NewDefaultMatchRules()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := r.CriticalTotal(tt.raw, tt.critical, tt.failure); got != tt.want {
+				t.Errorf("CriticalTotal(%d, %v, %v) = %d, want %d", tt.raw, tt.critical, tt.failure, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCriticalDamage(t *testing.T) {
+	tests := []struct {
+		name     string
+		final    int
+		critical bool
+		want     int
+	}{
+		{"doubles final damage", 8, true, 16},
+		{"zero stays zero", 0, true, 0},
+		{"no critical keeps", 8, false, 8},
+	}
+	r := match.NewDefaultMatchRules()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := r.CriticalDamage(tt.final, tt.critical); got != tt.want {
+				t.Errorf("CriticalDamage(%d, %v) = %d, want %d", tt.final, tt.critical, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetSize(t *testing.T) {
+	tests := []struct {
+		name string
+		set  match.DiceSet
+		want int
+	}{
+		{"2d10 has two dice", match.DiceSet2D10, 2},
+		{"d20 has one die", match.DiceSetD20, 1},
+		{"unknown falls back to 2d10", match.DiceSet("x"), 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.set.SetSize(); got != tt.want {
+				t.Errorf("SetSize() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

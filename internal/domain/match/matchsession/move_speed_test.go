@@ -44,7 +44,7 @@ func (f *moveSpeedFixture) dash() *action.Action {
 // D1: a pure move has no actionSpeed — no skill, no dice, result 0 — only its moveSpeed.
 func TestPureMove_HasNoActionSpeed(t *testing.T) {
 	t.Run("a Dash in Race rolls only Accelerate", func(t *testing.T) {
-		// 4 faces cover exactly one 2D10 check; a Legerity roll would drain past them.
+		// Um teste 2D10 sem viés tira 2 faces; um Legerity rolado tiraria mais.
 		src := &countingSource{face: 6}
 		f := newMoveSpeedFixture(t, enum.Race, src)
 		a := f.dash()
@@ -58,8 +58,8 @@ func TestPureMove_HasNoActionSpeed(t *testing.T) {
 		if a.Move.FinalSpeed != want {
 			t.Errorf("FinalSpeed = %d, want %d", a.Move.FinalSpeed, want)
 		}
-		if src.rolls != 4 {
-			t.Errorf("dice rolled = %d, want 4 (moveSpeed only; Legerity must consume none)", src.rolls)
+		if src.rolls != 2 {
+			t.Errorf("dice rolled = %d, want 2 (moveSpeed only; Legerity must consume none)", src.rolls)
 		}
 	})
 
@@ -109,6 +109,8 @@ func TestPureMove_HasNoActionSpeed(t *testing.T) {
 			&action.Move{Category: enum.Dash, Position: [3]int{8, 8, 0}}, nil, nil,
 			&action.Dodge{RollCheck: action.RollCheck{SkillName: enum.Reflex.String()}}, nil, nil)
 		escape.ReactionKind = action.ReactClosedEscape
+		// A fuga fechada leva a Evasion, como o mapper exige na produção (RequiresEvasionSkill).
+		escape.Skills = []action.Skill{{SkillName: enum.Evasion.String()}}
 		if _, err := f.session.AttachReaction(f.playerB, escape); err != nil {
 			t.Fatalf("AttachReaction: %v", err)
 		}

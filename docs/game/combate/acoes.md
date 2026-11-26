@@ -24,6 +24,11 @@ Uma ação é composta por:
 | Defesa | Componente defensivo |
 | Esquiva | Componente de evasão |
 
+Cada ação também é feita de uma ou mais destas quatro coisas — **ataque**, **defesa**,
+**esquiva** e **movimento** — e é isso que decide o que pesa nela e o que a impede. A tabela
+completa (e por que o repelir é ataque **e** defesa) está em [Reações › Do que cada ação é
+feita](reacoes.md#do-que-cada-ação-é-feita).
+
 ## Velocidade da Ação
 
 A velocidade determina a **ordem de resolução** das ações na rodada. Composta por:

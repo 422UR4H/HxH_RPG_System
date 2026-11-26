@@ -73,8 +73,8 @@ type editFixture struct {
 	// baseline the advantage test checks an edit never moves.
 	facesAtOpen int
 	// primaryTotal is ActionResult.Total read off the Primary set alone, before any edit —
-	// what the advantage test proves the edit reads PAST, onto the (scripted higher) Secondary
-	// set.
+	// o que o teste de vantagem prova que a edição supera, com o dado extra (roteirizado alto)
+	// que ela tira.
 	primaryTotal int
 }
 
@@ -94,14 +94,12 @@ func (f *editFixture) openTurn() *turn.Turn {
 // state a master's condition edit lands on.
 //
 // The dice budget: one Sword attack, in the session's default Free round mode, rolls the hit
-// (a 2D10 test — 4 faces, Primary AND Secondary, because Roll always rolls both even with no
-// advantage) and then the weapon's own damage dice (Sword is D10+D4, Primary only — damage has
-// no advantage). Free mode never rolls actionSpeed, so that is 6 faces for the open action
-// itself, plus 4 more reserved and unused by every RollCondition test: a Skills-edit test
-// reuses this same fixture and adds one skill afterwards, which is its own 2D10 test.
-//
-// Secondary is scripted strictly higher than Primary on the hit check, so a later advantage
-// edit provably switches which already-rolled set is read.
+// (a 2D10 test — 2 faces: Roll rola só o conjunto; o extra de um viés cai quando o viés o
+// pede) and then the weapon's own damage dice (Sword is D10+D4 — damage has no advantage).
+// Free mode never rolls actionSpeed, so that is 4 faces for the open action itself. Depois
+// delas vêm as faces que uma edição tira: o dado extra de uma vantagem no acerto (9, mais alto
+// que o conjunto, para a vantagem provadamente mudar o par mantido) ou a perícia 2D10 que um
+// teste de edição de Skills acrescenta.
 func newOpenAttackFixture(t *testing.T) *editFixture {
 	t.Helper()
 
@@ -140,9 +138,8 @@ func newOpenAttackFixture(t *testing.T) *editFixture {
 
 	f.rollSource = &scriptedFaces{faces: []int{
 		3, 4, // Hit Primary: sum 7
-		9, 8, // Hit Secondary: sum 17 — strictly higher, so advantage must switch sets
 		5, 2, // Sword damage: D10, D4
-		6, 7, 1, 9, // reserved for a later skill edit (2D10, unused by RollCondition tests)
+		9, 8, // a edição: o extra de uma vantagem no acerto (9), ou a perícia acrescentada (9, 8)
 	}}
 	session.SetRollSource(f.rollSource)
 	f.session = session
@@ -178,9 +175,10 @@ func newOpenAttackFixture(t *testing.T) *editFixture {
 // the very start, so its dice fall the moment the action is enqueued — this is the "original"
 // roll the removed-and-restored test proves comes back unchanged.
 //
-// Dice budget: rollActionDice walks Skills BEFORE Attack, so the skill's own 2D10 test (4
-// faces) rolls first, then the hit (4 faces), then the weapon's damage (2 faces, Primary
-// only — damage has no advantage). 10 faces total. Free mode never rolls actionSpeed.
+// Dice budget: rollActionDice walks Skills BEFORE Attack, so the skill's own 2D10 test (2
+// faces — Roll rola só o conjunto) rolls first, then the hit (2 faces), then the weapon's
+// damage (2 faces, Primary only — damage has no advantage). 6 faces total. Free mode never
+// rolls actionSpeed.
 func newOpenAttackFixtureWithSkill(t *testing.T, skillName string) *editFixture {
 	t.Helper()
 
@@ -217,9 +215,7 @@ func newOpenAttackFixtureWithSkill(t *testing.T, skillName string) *editFixture 
 
 	f.rollSource = &scriptedFaces{faces: []int{
 		1, 2, // skill Primary: sum 3
-		3, 4, // skill Secondary: sum 7
 		5, 6, // Hit Primary
-		7, 8, // Hit Secondary
 		9, 1, // Sword damage: D10, D4
 	}}
 	session.SetRollSource(f.rollSource)
@@ -263,8 +259,9 @@ func newOpenAttackFixtureWithSkill(t *testing.T, skillName string) *editFixture 
 // stays ungated on purpose"), so a single queued action opens without wiring up the
 // scheduler's Race eligibility gate.
 //
-// Dice budget: Race rolls actionSpeed (4 faces). The move is a Shift, which takes Brake's
-// passive value and rolls nothing (see rollActionDice's Shift carve-out). 4 faces total.
+// Dice budget: Race rolls actionSpeed (2 faces — Roll rola só o conjunto). The move is a
+// Shift, which takes Brake's passive value and rolls nothing (see rollActionDice's Shift
+// carve-out). 2 faces total.
 func newOpenMoveFixture(t *testing.T) *editFixture {
 	t.Helper()
 
@@ -289,7 +286,6 @@ func newOpenMoveFixture(t *testing.T) *editFixture {
 
 	f.rollSource = &scriptedFaces{faces: []int{
 		1, 2, // actionSpeed Primary
-		3, 4, // actionSpeed Secondary
 	}}
 	session.SetRollSource(f.rollSource)
 	f.session = session
@@ -416,7 +412,7 @@ func TestEditActionRollCondition(t *testing.T) {
 		}
 	})
 
-	t.Run("advantage reads the other set that was already rolled", func(t *testing.T) {
+	t.Run("advantage draws exactly one extra die and keeps the best pair", func(t *testing.T) {
 		f := newOpenAttackFixture(t)
 		uc := match.NewEditActionUC()
 		ma := action.NewMasterAction()
@@ -429,15 +425,18 @@ func TestEditActionRollCondition(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
-		// The fixture scripts Secondary strictly higher than Primary, so advantage must
-		// switch which set is read — proving RollAttempts is why the edit needs no re-roll.
-		if res.Resolution.ActionResult.Total <= f.primaryTotal {
-			t.Fatalf("advantage did not switch to the better set (total %d)",
-				res.Resolution.ActionResult.Total)
+		// O extra roteirizado (9) é mais alto que o conjunto [3 4], então a vantagem tem que
+		// mudar o par mantido para [4 9] — e o conjunto que já caiu nunca é rolado de novo.
+		if got, want := res.Resolution.ActionResult.Total, f.primaryTotal+6; got != want {
+			t.Fatalf("advantage total = %d, want %d (the kept pair 4+9 instead of 3+4)", got, want)
 		}
-		if f.rollSource.consumed() != f.facesAtOpen {
-			t.Fatalf("the edit consumed %d extra faces — a die was re-rolled",
+		if f.rollSource.consumed() != f.facesAtOpen+1 {
+			t.Fatalf("the edit consumed %d faces, want 1 — only the extra its level asks for",
 				f.rollSource.consumed()-f.facesAtOpen)
+		}
+		hit := f.openTurn().GetAction().Attack.Hit.Attempts
+		if !slices.Equal(hit.Primary, []int{3, 4}) || !slices.Equal(hit.Extra, []int{9}) {
+			t.Fatalf("hit attempts = %+v, want Primary [3 4] untouched and Extra [9]", hit)
 		}
 	})
 
@@ -585,10 +584,11 @@ func TestApplyMasterAction_PreservesReactionSwapDisadvantage(t *testing.T) {
 	session.GetActiveRound().SetMode(enum.Race)
 
 	src := &scriptedFaces{faces: []int{
-		1, 1, 1, 1, // attacker's open action: Speed Primary + Secondary (value irrelevant)
-		1, 1, 1, 1, // victim's own pending action: Speed Primary + Secondary
-		9, 8, 2, 3, // reaction: Speed Primary (sum 17, the BETTER set) + Secondary (sum 5, worse)
-		1, 1, 1, 1, // reaction: Repel Primary + Secondary
+		1, 1, // attacker's open action: Speed Primary (value irrelevant)
+		1, 1, // victim's own pending action: Speed Primary
+		9, 8, // reaction: Speed Primary (sum 17, the neutral reading)
+		1, 1, // reaction: Repel Primary
+		2, // reaction: o extra que a desvantagem da troca pede — o pior par é 8+2 = 10, não 17
 	}}
 	session.SetRollSource(src)
 
@@ -678,9 +678,9 @@ func TestEditActionSkills(t *testing.T) {
 		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
-		// One 2D10 test: four faces, because Roll always rolls Primary AND Secondary.
-		if got := f.rollSource.consumed() - facesBefore; got != 4 {
-			t.Fatalf("added skill consumed %d faces, want 4", got)
+		// Um teste 2D10: duas faces — Roll rola só o conjunto.
+		if got := f.rollSource.consumed() - facesBefore; got != 2 {
+			t.Fatalf("added skill consumed %d faces, want 2", got)
 		}
 		added := f.skillOn(t, enum.Acrobatics.String())
 		if added.Attempts.IsEmpty() {
@@ -713,7 +713,7 @@ func TestEditActionSkills(t *testing.T) {
 		}
 		back := f.skillOn(t, enum.Acrobatics.String()).Attempts
 		if !slices.Equal(back.Primary, original.Primary) ||
-			!slices.Equal(back.Secondary, original.Secondary) {
+			!slices.Equal(back.Extra, original.Extra) {
 			t.Fatalf("the dice came back different: %v → %v", original, back)
 		}
 	})
@@ -936,8 +936,9 @@ func TestOverrideCapture(t *testing.T) {
 }
 
 // attachReaction attaches a reaction of the given kind from the victim to the fixture's open
-// attack and returns its ID. Free mode rolls no speed; a dodge rolls its 2D10 Dodge (4 faces —
-// exactly the fixture's reserved budget), a repel its 2D10 Repel.
+// attack and returns its ID. Free mode rolls no speed; a dodge rolls its 2D10 Dodge (2 faces —
+// Roll rola só o conjunto; as duas que o fixture reserva depois da abertura), a repel its
+// 2D10 Repel.
 func (f *editFixture) attachReaction(t *testing.T, kind action.ReactionKind) uuid.UUID {
 	t.Helper()
 	r := action.NewAction(

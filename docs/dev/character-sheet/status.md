@@ -82,6 +82,12 @@ HealthPoints
 └── vitality    (skill.ISkill)        → GetLevel()
 ```
 
+### HP mínimo (negativo)
+
+`min` do HP é `−⌊10 + nível de Vitality + valor de Resistance + bônus de Physicals⌋` (por ficha).
+`DecreaseAt` e `SetCurrent` da `HealthPoints` **sobrescrevem** o comportamento do `Bar` para
+permitir HP abaixo do mínimo (o personagem morto guarda o HP em que morreu).
+
 ### Natureza aditiva
 
 A fórmula HP é **aditiva**: `HP_BASE_VALUE + int(coeff * bonus)`. Mesmo com
@@ -104,9 +110,13 @@ com `curr < max` sem motivo narrativo.
 
 ### TODOs preservados do código
 
-- `TODO: Implement Min for hit_points` — `Min = -generateStatus.GetLvl()`. O HP
-  mínimo poderá ser negativo (representando morte gradual), mas ainda não está
-  implementado.
+- ~~`TODO: Implement Min for hit_points`~~ — **feito** (status effects fase 2): `min =
+  -NegativeMax()`, onde `NegativeMax = ⌊10 + vitality.GetLevel() + resistance.GetValue() +
+  physicals.GetBonus()⌋`, recalculado em `Upgrade`. A barra de HP **não** tem piso na
+  `DecreaseAt` (o HP exato fica: −40 é −40) e `SetCurrent` só rejeita acima do `max`; **quem
+  decide a morte é a regra da partida** (HP abaixo do mínimo → status `dead`, ver
+  [`../match/status-effects.md`](../match/status-effects.md)), não a barra. Stamina e Aura
+  seguem com `min` 0.
 - `TODO: check how the buff interferes here` — Buffs nos atributos podem alterar
   `resistance.GetValue()` via ponteiro compartilhado (ver
   [`abilities-attributes.md`](abilities-attributes.md) §6), mas o impacto na

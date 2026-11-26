@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -145,8 +146,8 @@ func TestDefaultReaction_TheMastersBiasRollsItOnce(t *testing.T) {
 	rolls := f.source.rolls
 
 	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Bias: 1})
-	if got := f.source.rolls - rolls; got != 2 {
-		t.Fatalf("the first bias rolled %d dice, want 2 — the primary 2D10 set", got)
+	if got := f.source.rolls - rolls; got != 3 {
+		t.Fatalf("the first bias rolled %d dice, want 3 — the primary 2D10 set plus one extra for the level", got)
 	}
 	if cr := f.resultOf(t, f.b); cr.Dodge.Total != 18 {
 		t.Fatalf("Dodge = %d, want 18 — advantage keeps the better of 9+9 and the base 11", cr.Dodge.Total)
@@ -155,25 +156,15 @@ func TestDefaultReaction_TheMastersBiasRollsItOnce(t *testing.T) {
 	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Bias: -1})
 	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{})
 	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Bias: 1})
-	if got := f.source.rolls - rolls; got != 2 {
-		t.Fatalf("re-biasing rolled again: %d dice in all, want 2", got)
+	if got := f.source.rolls - rolls; got != 3 {
+		t.Fatalf("re-biasing rolled again: %d dice in all, want 3", got)
+	}
+	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Bias: 2})
+	if got := f.source.rolls - rolls; got != 4 {
+		t.Fatalf("a second level drew %d dice in all, want 4 — only the one missing extra", got)
 	}
 
-	t.Run("the default defense rolls on its own first bias, and disadvantage keeps the worse", func(t *testing.T) {
-		before := f.source.rolls
-		f.edit(t, seated.GetID(), action.FieldDefense, action.RollCondition{Bias: -1})
-		if f.source.rolls-before != 2 {
-			t.Fatalf("rolled %d dice for the defense, want 2", f.source.rolls-before)
-		}
-		// The defense is only derived when the dodge misses; B's dodge of 18 beats the hit,
-		// so read C's instead with a dodge that cannot.
-		sc := f.seatedOf(t, f.c)
-		f.edit(t, sc.GetID(), action.FieldDodge, action.RollCondition{Modifier: -100})
-		f.edit(t, sc.GetID(), action.FieldDefense, action.RollCondition{Bias: -1})
-		if cr := f.resultOf(t, f.c); cr.Defense.Total != 11 {
-			t.Fatalf("Defense = %d, want 11 — disadvantage keeps the worse of 9+9 and the base", cr.Defense.Total)
-		}
-	})
+	// A defesa padrão que o mestre enviesa: TestPassiveDefaultDefenseBiasDrawsBaseSet (dice_test.go).
 }
 
 func TestDefaultReaction_TheAnswerReplacesIt(t *testing.T) {
@@ -284,5 +275,48 @@ func TestDefaultReaction_FollowsTheTargets(t *testing.T) {
 	}
 	if len(f.turn.GetReactions()) != 2 {
 		t.Fatalf("reactions = %d, want 2 — B's was never touched", len(f.turn.GetReactions()))
+	}
+}
+
+// Uma esquiva (ou outro tipo que mantém a defesa padrão) que substitui a sentada leva os dados
+// da defesa padrão que já caíram e a condição do mestre: nenhum dado dela cai de novo, nem com
+// um status que pesa na defesa (o Enfraquecido físico com desvantagem).
+func TestDefaultReaction_DodgeAnswerKeepsTheDefaultDefenseDice(t *testing.T) {
+	f := newDefaultFixture(t)
+	weak := statuseffect.Effect{
+		ID: uuid.New(), CharacterID: f.c, Kind: statuseffect.KindWeakened,
+		Aptitude: statuseffect.AptitudePhysical, Params: statuseffect.Params{Disadvantage: true},
+	}
+	changeStatus(f.session, f.c, weak)
+	seated := f.seatedOf(t, f.c)
+	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Modifier: -100})
+	f.edit(t, seated.GetID(), action.FieldDefense, action.RollCondition{Modifier: 4})
+	want := f.resultOf(t, f.c).Defense.Total
+	rolls := f.source.rolls
+
+	r, err := f.react(t, f.playerC, f.c, action.ReactDodge)
+	if err != nil {
+		t.Fatalf("AttachReaction(dodge): %v", err)
+	}
+	// A esquiva declarada não vence o acerto, para a defesa padrão ser lida.
+	f.edit(t, r.GetID(), action.FieldDodge, action.RollCondition{Modifier: -100})
+	cr := f.resultOf(t, f.c)
+	if got, dodge := f.source.rolls-rolls, len(cr.Dodge.Rolled); got != dodge {
+		t.Fatalf("the dodge answer drew %d dice, want only the dodge's %d — the defense's already fell", got, dodge)
+	}
+	if cr.ReactionID != r.GetID() || cr.Defense.Total != want {
+		t.Fatalf("C = %+v, want the dodge with the seated defense (%d)", cr, want)
+	}
+	var moved bool
+	for _, ov := range f.session.PeekOverridesFor(f.turn) {
+		if ov.ActionID == seated.GetID() {
+			t.Fatalf("a capture of the replaced seated reaction survived: %+v", ov)
+		}
+		if ov.ActionID == r.GetID() && ov.Field == "defense.condition" {
+			moved = true
+		}
+	}
+	if !moved {
+		t.Fatal("the master's defense capture must move to the dodge")
 	}
 }

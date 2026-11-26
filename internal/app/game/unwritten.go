@@ -18,10 +18,12 @@ import (
 // by r.mu, and die with the process: after a restart the session is rebuilt from what IS on disk,
 // which is then consistent with itself.
 //
-//   - unwrittenSheets: sheets whose HP a turn's close applied but whose PersistTurnClose failed.
-//     The next close writes them with its own damaged sheets. Only these, never every sheet of
-//     the session: writing a sheet the match did not touch would clobber an edit made to it over
-//     REST meanwhile.
+//   - unwrittenSheets: fichas cujo HP ainda não foi gravado — o que um fechamento de turno
+//     aplicou e o PersistTurnClose não gravou, e o HP que a remoção do Morto pôs. O próximo
+//     fechamento as grava com as fichas que ele mesmo danificou; fora de turno, o
+//     flushStatusEffects as leva na mesma transação das gravações de status; o end_match, na
+//     dele. Só essas, nunca todas as fichas da sessão: gravar uma ficha que a partida não tocou
+//     apagaria uma edição feita nela por REST nesse meio-tempo.
 //   - unwrittenRoundEnds: rounds that ended at the table but whose end was not written (a failed
 //     PersistRoundClose, a failed turn close plus a failed salvage, a change_scene whose old pair
 //     was never a row or whose CloseSceneAndRound failed). The next write that could

@@ -46,6 +46,7 @@ func TestNormalize(t *testing.T) {
 		{name: "prone has no params", kind: statuseffect.KindProne, want: statuseffect.Params{}},
 		{name: "airborne has no params", kind: statuseffect.KindAirborne, want: statuseffect.Params{}},
 		{name: "open guard has no params", kind: statuseffect.KindOpenGuard, want: statuseffect.Params{}},
+		{name: "dead has no params", kind: statuseffect.KindDead, want: statuseffect.Params{}},
 		{name: "hidden has no params", kind: statuseffect.KindHidden, want: statuseffect.Params{}},
 		{name: "bleeding damage per round defaults to one", kind: statuseffect.KindBleeding, want: statuseffect.Params{HPPerRound: 1}},
 		{name: "burning damage per round defaults to one", kind: statuseffect.KindBurning, want: statuseffect.Params{HPPerRound: 1}},

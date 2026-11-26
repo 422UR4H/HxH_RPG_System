@@ -27,7 +27,7 @@ func naiveStory(t time.Time) time.Time {
 // PersistMatchEnd grava o fim da partida numa transação (spec 2026-11-08 §5): fins de round ainda
 // não gravados e o par ativo, fechados; o relógio parado no instante final; o clockRealTime da
 // pausa; as barras das fichas que um fechamento não gravou; as mudanças de efeitos de status
-// ainda não gravadas; matches.game_end_at/story_end_at/brief_final_description (recusa partida já encerrada);
+// ainda não gravadas; a marca de morte das fichas (dead_at); matches.game_end_at/story_end_at/brief_final_description (recusa partida já encerrada);
 // campaigns.story_current_at e o story_current_at de toda ficha participante avançam ao
 // instante final (a data, nas fichas), sem nunca regredir.
 //
@@ -97,8 +97,22 @@ func (r *Repository) PersistMatchEnd(ctx context.Context, d appmatch.MatchEndDat
 
 	// As mudanças de efeitos de status que uma gravação anterior não gravou, pelo mesmo motivo.
 	if len(d.StatusEffects) > 0 {
-		if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects); err != nil {
+		if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects, nil); err != nil {
 			return fmt.Errorf("PersistMatchEnd status effects: %w", err)
+		}
+	}
+
+	// A marca de morte da ficha: quem morreu na partida ganha a data do fim (a anterior fica);
+	// quem teve a morte desfeita a perde. Ficha fora de DeadMarks não é tocada.
+	for _, m := range d.DeadMarks {
+		query := `UPDATE character_sheets SET dead_at = NULL WHERE uuid = $1`
+		args := []any{m.SheetID}
+		if m.Dead {
+			query = `UPDATE character_sheets SET dead_at = COALESCE(dead_at, $2) WHERE uuid = $1`
+			args = append(args, d.GameEndAt.UTC())
+		}
+		if _, err := tx.Exec(ctx, query, args...); err != nil {
+			return fmt.Errorf("PersistMatchEnd dead mark of %s: %w", m.SheetID, err)
 		}
 	}
 

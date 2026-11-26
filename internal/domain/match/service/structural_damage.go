@@ -1,6 +1,9 @@
 package service
 
-import mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+import (
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+)
 
 // StructuralDamageResult is the outcome of one attack on a wall segment.
 type StructuralDamageResult struct {
@@ -14,7 +17,10 @@ type StructuralDamageResult struct {
 
 // ApplyStructuralDamage applies raw attack damage to a WallSegment, respecting
 // material resistance. MaxHP==0 signals an indestructible wall (no HP system).
-func ApplyStructuralDamage(w mapentity.WallSegment, rawDamage int) StructuralDamageResult {
+//
+// critical é o acerto crítico: dobra o dano efetivo (depois da resistência) antes de tirar o
+// HP, como o dano final de um personagem (MatchRules.CriticalDamage). O rebote não muda.
+func ApplyStructuralDamage(w mapentity.WallSegment, rawDamage int, critical bool) StructuralDamageResult {
 	if w.MaxHP == 0 {
 		// Indestructible — no HP system; full rebound regardless of attack type.
 		// TODO: if range attack (Attack.Category == "range"), ReboundDamage = 0
@@ -25,6 +31,8 @@ func ApplyStructuralDamage(w mapentity.WallSegment, rawDamage int) StructuralDam
 		effective = 0
 	}
 	rebound := rawDamage - effective // = min(rawDamage, Resistance)
+	// A regra do crítico mora em MatchRules; CriticalDamage não lê nenhum campo das regras.
+	effective = match.MatchRules{}.CriticalDamage(effective, critical)
 	w.HP -= effective
 	if w.HP < 0 {
 		w.HP = 0

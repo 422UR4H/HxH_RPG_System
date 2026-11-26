@@ -1,6 +1,7 @@
 package matchsession
 
 import (
+	"log"
 	"math"
 	"reflect"
 	"slices"
@@ -37,7 +38,7 @@ type MatchSession struct {
 	// anchorMoves são as reações que saíram do turno aberto desde a última vez que a sala as
 	// leu (TakeAnchorMoves), com o que ficou no lugar de cada uma.
 	anchorMoves []AnchorMove
-	matchUUID uuid.UUID
+	matchUUID   uuid.UUID
 	// mapUUID is the map the session's board belongs to — set by Room via SetMapUUID once it
 	// knows it (StartMatch/RehydrateSession/loadBoard, from Board.MapUUID). It exists so a
 	// PlayerMemory created for the first time (memoryFor) is stamped with the REAL map instead
@@ -99,6 +100,9 @@ type MatchSession struct {
 	// statusEffects são os efeitos de status por ficha (a mesma chave de charSheets), em ordem.
 	// Mexido sempre sob o r.mu de quem chama; ver status_effects.go.
 	statusEffects map[uuid.UUID][]statuseffect.Effect
+	// everDead guarda quem teve o Morto em algum momento desta partida (ao carregar ou ao morrer):
+	// no fim, quem estava aqui e não o tem mais teve a morte desfeita (ver DeadMarks).
+	everDead map[uuid.UUID]bool
 	// arrivals é a ordem de chegada de cada ação na fila (nextArrival cresce a cada
 	// EnqueueAction). A fila já guarda as ações nessa ordem — Insert só acrescenta e a saída
 	// preserva o resto —, e é ela que desempata a fila; o número existe para que uma ação que um
@@ -140,6 +144,7 @@ func NewMatchSession(
 		clock:         clock.NewAt(defaultStoryStart),
 		now:           time.Now,
 		statusEffects: make(map[uuid.UUID][]statuseffect.Effect),
+		everDead:      make(map[uuid.UUID]bool),
 	}
 }
 
@@ -173,6 +178,7 @@ func NewMatchSessionWithState(
 		clock:          clock.NewAt(defaultStoryStart),
 		now:            time.Now,
 		statusEffects:  make(map[uuid.UUID][]statuseffect.Effect),
+		everDead:       make(map[uuid.UUID]bool),
 	}
 }
 
@@ -508,8 +514,11 @@ func (s *MatchSession) CurrentTurnID() uuid.UUID {
 // inside Action. The price of that model is that the original is destroyed in the live
 // object, which is exactly why the override capture exists (see CaptureOverride).
 //
-// It NEVER rolls for a condition edit: Derive reads the two sets RollAttempts has held since
-// the action arrived, and a late advantage changes WHICH set is read, never what fell.
+// Uma edição de condição nunca rola de novo o que caiu: uma vantagem tardia muda QUAIS dados
+// do monte são mantidos, nunca o que caiu. Um viés que pede dados que ainda não existem (o
+// extra de um nível novo, ou o conjunto de um passivo) os tira uma vez, quando o teste é lido
+// com o viés inteiro: nas velocidades (deriveSpeeds → deriveCheck) e na resolução do turno
+// (ResolveTurn → TurnResolution.DiceShort).
 //
 // It never touches the economy either. Charged bars, recorded Speeds and the order already
 // played stay as they are — bars_updated has been on the wire since before the edit, and
@@ -630,8 +639,12 @@ func (s *MatchSession) ApplyMasterAction(
 				target.DefaultDefense = nil
 			}
 		} else {
+			// Nenhum dado cai aqui: a edição só conhece o viés do mestre, e a leitura soma
+			// sistema, ledger e status. Quem lê com o viés inteiro tira o que falta, uma vez —
+			// deriveSpeeds (logo abaixo) para speed e moveSpeed, e a resolução do turno
+			// (ResolveTurn, no fim) para os testes que ela lê. Um teste que ninguém lê não
+			// ganha dado, e uma ação na fila ganha os seus quando o turno dela abre.
 			rc.Context.Condition = &cond
-			s.ensureDiceForBias(rc, cond.Bias)
 		}
 	}
 	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
@@ -640,6 +653,7 @@ func (s *MatchSession) ApplyMasterAction(
 	// would silently erase a reaction's swap-disadvantage the instant the master edited any
 	// OTHER condition on it (see Action.SystemBias).
 	s.deriveSpeeds(target, target.SystemBias)
+	s.deriveSkills(target)
 	if t == nil {
 		return nil, nil
 	}
@@ -681,24 +695,6 @@ func (s *MatchSession) queuedAction(id uuid.UUID) *action.Action {
 // IsQueued reports whether an action is still waiting in the queue.
 func (s *MatchSession) IsQueued(id uuid.UUID) bool { return s.queuedAction(id) != nil }
 
-// ensureDiceForBias gives a test with no dice its primary set the first time a bias asks for one
-// — the moment a passive test becomes a rolled one (RollCalculator.Derive, readPassiveBias):
-// "if you put advantage on it, it is rolled" (owner decision, 2026-10-12). The master's bias asks
-// in ApplyMasterAction; the system's (a swap's disadvantage) in deriveSpeeds (2026-10-13).
-//
-// It is the FIRST roll of a test that never rolled, not a re-roll: a set that fell stays, so
-// taking the bias off and putting it back reads the same dice. That is the same rule
-// applySkillEdit already follows for a skill that did not exist a moment ago. A test whose dice
-// fell on arrival is left alone.
-func (s *MatchSession) ensureDiceForBias(rc *action.RollCheck, bias int) {
-	if bias == 0 || !rc.Attempts.IsEmpty() {
-		return
-	}
-	rc.Attempts = action.RollAttempts{
-		Primary: service.RollCalculator{}.RollDice(s.rules.DiceSet.Dice(), s.rollSource),
-	}
-}
-
 // discardEdits undoes everything the master displaced on an action that leaves without reaching
 // a close — a queued action cancelled or consumed by a reaction: "the edits go with it" (owner
 // decision, 2026-10-12). Each capture holds the original of the field it displaced, so writing
@@ -710,6 +706,7 @@ func (s *MatchSession) discardEdits(a *action.Action) {
 	}
 	s.dropEdits(a.GetID())
 	s.deriveSpeeds(a, a.SystemBias)
+	s.deriveSkills(a)
 }
 
 // restoreOriginal writes one capture's original back onto the action. The field keys are the
@@ -929,8 +926,11 @@ func conditionFieldKey(e action.ConditionEdit) string {
 // a later re-add reads them back. Without that, taking a skill out and putting it back would
 // be a free re-roll — the master would only have to dislike a number to be given another one.
 //
-// The list changes and the list does not yet DECIDE anything: nobody reads a Skill's result
-// (combat-engine.md § A corrente de testes). That is stated, not hidden.
+// Cada entrada ganha o total derivado (deriveSkills: dados, valor, condição do mestre e
+// status) antes da captura, para que "tirar e pôr de volta exatamente" compare igual ao
+// original capturado. A lista muda e ainda não DECIDE nada: o total existe, mas nenhum
+// desfecho o lê (combat-engine.md § A corrente de testes — a corrente vai ler). Dito, não
+// escondido.
 func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill, masterUUID uuid.UUID) {
 	if s.removedSkillDice == nil {
 		s.removedSkillDice = map[uuid.UUID]map[string]action.RollAttempts{}
@@ -973,15 +973,22 @@ func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill, mas
 			memory[name] = attempts
 		}
 	}
+	// As entradas genuinamente novas tiram os dados agora (a PRIMEIRA rolagem de um teste que
+	// não existia); toda a lista ganha o total. Antes da captura: o original capturado tem total,
+	// e o next também precisa ter para que a edição de volta compare igual.
+	calc := service.RollCalculator{}
+	for i := range next {
+		if next[i].Attempts.IsEmpty() {
+			next[i].Attempts = calc.Roll(s.rules, s.rollSource)
+		}
+	}
+	s.deriveSkillList(a.GetActorID(), next)
 	// Captured BEFORE the write, against next — the reconciled list, dice and all — not the
 	// raw want the master sent. That is what lets "strip, then put back exactly" compare equal
 	// to the captured original and erase the row: a re-add reads the SAME dice back from
 	// memory, so incoming here is byte-for-byte what was there before the strip.
 	s.captureOverride(a.GetID(), "skills", match.OriginPlayer, masterUUID, a.Skills, next)
 	a.Skills = next
-	// rollActionDice leaves alone every RollCheck whose dice already fell, so this rolls for
-	// exactly the entries that are genuinely new.
-	s.rollActionDice(a)
 }
 
 // captureOverride records the value about to be displaced, once per field, and erases the
@@ -1191,6 +1198,13 @@ type TurnTransition struct {
 	// Damaged is what the close actually wrote to a sheet. Empty on the first transition of
 	// a round, when nothing closed.
 	Damaged []DamagedCharacter
+	// Deaths são as aplicações do Morto que este fechamento fez: uma por personagem que o dano
+	// aplicado deixou abaixo do mínimo do HP e que ainda não estava morto (death.go). O evento de
+	// cada uma (ChangeApplied) sai só com a mudança; a sala o carimba e o grava com o turno.
+	Deaths []statuseffect.Write
+	// DeathDrops são as ações da fila que os mortos deste fechamento tinham e que o Morto tirou,
+	// em ordem — a sala as grava como canceladas pelo mestre, como as de qualquer status.
+	DeathDrops []StatusDrop
 	// NoActionCanPay reports that no action in the queue can still pay its price — none passes
 	// the gate that applies to it — which is what ends a Race round. It is not an error: the
 	// actions still queued keep the roll they already made and belong to the next round. The
@@ -1198,12 +1212,13 @@ type TurnTransition struct {
 	NoActionCanPay bool
 }
 
-// DamagedCharacter is one applied HP reduction. The caller persists it — the session holds
-// the live sheet, the gateway holds the row.
+// DamagedCharacter is one applied HP change. The caller persists it — the session holds
+// the live sheet, the gateway holds the row. Delta is the natural sign: NewHP minus the HP
+// before, so negative when the character lost HP.
 type DamagedCharacter struct {
 	CharacterID uuid.UUID
 	Sheet       *csSheet.CharacterSheet
-	Damage      int
+	Delta       int
 	NewHP       int
 }
 
@@ -1293,6 +1308,11 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 	in.Provisional = prov
 	next := s.scheduler.SelectNext(in)
 	tr := s.closeOpenTurn()
+	if next != nil && len(tr.DeathDrops) > 0 && !s.IsQueued(next.GetID()) {
+		// A escolhida era de quem morreu neste fechamento e saiu da fila: escolhe de novo, com
+		// os mesmos preços provisórios.
+		next = s.scheduler.SelectNext(in)
+	}
 	if next == nil {
 		// No action in the queue can still pay its price. The round is over — the caller closes it.
 		// If turns already opened in it, the round is closing with a price: bars that priced
@@ -1387,7 +1407,7 @@ func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
 // reaction a player sent is never touched here.
 //
 // No die falls: a default reaction reads its tests at the dice set's base value, and rolls only
-// if the master puts a bias on one (ApplyMasterAction, ensureDiceForBias). Only an attack
+// if a bias on one is read (ResolveTurn → DiceShort). Only an attack
 // collides with its targets, so an action without one seats nothing.
 //
 // O que senta segue os status do alvo (seatedReactionFor): sem poder reagir, ou sem as duas
@@ -1464,6 +1484,9 @@ func (s *MatchSession) closeOpenTurn() *TurnTransition {
 	s.clock.RaiseLimit(clock.LimitTurn, s.now())
 	tr.ClosedResolution = s.ResolveTurn(tr.Closed)
 	tr.Damaged = s.applyResolution(tr.ClosedResolution)
+	// O Morto entra antes de o próximo turno abrir: a fila já não tem a ação do morto, e a
+	// reação sentada para ele num ataque novo é um nothing.
+	tr.Deaths, tr.DeathDrops = s.applyDeaths(tr.Damaged, s.now().Truncate(time.Microsecond))
 	// The ledger moves one turn forward with the turn: what was scoped to this turn dies, and
 	// what was earned FOR the next one becomes live. It happens AFTER applyResolution, so a
 	// modifier that was meant to count in this turn still counted.
@@ -1479,12 +1502,48 @@ func (s *MatchSession) advanceLedgers() {
 	}
 }
 
-// ResolveTurn computes the resolution snapshot for t. Pure — it never touches a sheet.
+// ResolveTurn computes the resolution snapshot for t. It never touches a sheet.
 // The master reads it as a projection, over and over, as reactions land.
+//
+// A única coisa que ele escreve são dados: um teste que a resolução leu com menos dados do
+// que o viés pede (TurnResolution.DiceShort) ganha os que faltam, uma vez, e o turno é
+// resolvido de novo (drawShortDice, dice.go). Os dados ficam nas ações do turno, então
+// resolver de novo sem nada mudar não tira nenhum.
 func (s *MatchSession) ResolveTurn(t *turn.Turn) *service.TurnResolution {
 	if t == nil {
 		return nil
 	}
+	res := s.resolveOnce(t)
+	if len(res.DiceShort) == 0 {
+		return res
+	}
+	s.drawShortDice(t, res.DiceShort)
+	again := s.resolveOnce(t)
+	if len(again.DiceShort) > 0 {
+		// Uma segunda falta depois de completar é um defeito: o resolvedor pediu um teste que
+		// a sessão não encontra, ou pediu de novo o que acabou de receber.
+		log.Printf("matchsession: turno %s ainda sem dados depois de completar: %+v", t.GetID(), again.DiceShort)
+	}
+	return again
+}
+
+// PeekTurnResolution é a resolução de t para quem só lê (sob r.mu.RLock): uma passada pura,
+// que nunca tira dado. Quem muda um viés resolve sob a trava de escrita (ResolveTurn), então
+// aqui não deve faltar nada; se faltar, é um defeito do chamador que mudou o turno sem
+// resolvê-lo — vai ao log, e a leitura sai com os dados que existem.
+func (s *MatchSession) PeekTurnResolution(t *turn.Turn) *service.TurnResolution {
+	if t == nil {
+		return nil
+	}
+	res := s.resolveOnce(t)
+	if len(res.DiceShort) > 0 {
+		log.Printf("matchsession: leitura do turno %s sem dados que ninguém tirou (faltou resolver sob a trava de escrita): %+v", t.GetID(), res.DiceShort)
+	}
+	return res
+}
+
+// resolveOnce é uma passada pura do resolvedor sobre t.
+func (s *MatchSession) resolveOnce(t *turn.Turn) *service.TurnResolution {
 	return s.turnResolver.Resolve(service.ResolveInput{
 		Turn:     t,
 		Sheets:   s.charSheets,
@@ -1492,6 +1551,9 @@ func (s *MatchSession) ResolveTurn(t *turn.Turn) *service.TurnResolution {
 		Targets:  s,
 		Rules:    s.rules,
 		Weapons:  s.weapons,
+		// Lido, nunca escrito: a resolução roda sob a trava da sala (ResolveTurn na de escrita,
+		// PeekTurnResolution na de leitura), e quem muda um efeito segura a de escrita.
+		Effects: s.statusEffects,
 	})
 }
 
@@ -1548,7 +1610,7 @@ func (s *MatchSession) applyDamage(cr service.CharacterResult) (DamagedCharacter
 	return DamagedCharacter{
 		CharacterID: cr.TargetID,
 		Sheet:       sheet,
-		Damage:      cr.EffectiveDamage,
+		Delta:       -cr.EffectiveDamage,
 		NewHP:       newHP,
 	}, true
 }
@@ -1626,24 +1688,30 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 	// have fallen for it and the master's edits on it — nothing is rolled again.
 	if seated != nil && r.ReactionKind == seated.ReactionKind {
 		s.inheritSeated(seated, r)
+	} else if seated != nil && r.ReactionKind.KeepsDefault() {
+		// Uma esquiva, uma esquiva fechada ou uma fuga defensiva mantêm a defesa padrão: os
+		// dados dela que já caíram e a condição do mestre vão junto, senão cairiam de novo.
+		s.inheritSeatedDefaultDefense(seated, r)
 	}
 
 	s.rollActionDice(r)
+	// skills[] ganha o total em toda reação, livre ou não: é um teste declarado, não uma
+	// velocidade.
+	s.deriveSkills(r)
 
-	// A free reaction derives nothing, records nothing and consumes nothing. That IS the
+	// A free reaction derives no speed, records nothing and consumes nothing. That IS the
 	// discount: done in the exact instant, without opening the guard, it gives the action back.
 	var cancelled []*action.Action
 	if !r.ReactionKind.IsFree() {
 		var consumed []*action.Action
 		r.ConsumedActionIDs, consumed, cancelled = s.consumePendingFor(r)
-		// Swapping what you were going to do costs Disadvantage — the engine rolls again and
-		// keeps the worse of the two speeds. It is a MODE of reading the dice, never an
-		// Amount: RollAttempts already holds both sets and the bias only picks which one.
-		// With nothing queued there was no swap, so there is no penalty.
-		// Having cancelled earlier this round is a swap too; the two are one Disadvantage,
-		// never two. Doing, sooner, what the queue already said is NOT a swap
-		// (keepsQueuedIntent: fleeing to where the queued move was going, repelling whoever
-		// the queued attack was aimed at).
+		// Trocar o que ia fazer custa uma Desvantagem — um nível: o motor tira um dado a mais
+		// (deriveCheck, em deriveSpeeds) e mantém o pior par do monte. É um MODO de ler os
+		// dados, nunca um Amount.
+		// Sem nada na fila não houve troca, então não há penalidade.
+		// Ter cancelado antes neste round também é troca; as duas são uma Desvantagem só,
+		// nunca duas. Fazer mais cedo o que a fila já dizia NÃO é troca (keepsQueuedIntent:
+		// fugir para onde o movimento da fila ia, repelir quem o ataque da fila mirava).
 		systemBias := 0
 		if (len(consumed) > 0 && !keepsQueuedIntent(r, consumed, act.GetActorID())) || s.swapBias(r.GetActorID()) < 0 {
 			systemBias = -1
@@ -1686,6 +1754,26 @@ func (s *MatchSession) inheritSeated(seated, r *action.Action) {
 		s.overrides[r.GetID()] = moved
 		delete(s.overrides, seated.GetID())
 	}
+}
+
+// inheritSeatedDefaultDefense move só a defesa padrão da reação sentada (dados e condição do
+// mestre, com a captura "defense.condition" dele) para uma reação de outro tipo que a mantém
+// (KeepsDefault). A esquiva sentada não vai: o tipo novo declara o próprio teste de esquiva.
+func (s *MatchSession) inheritSeatedDefaultDefense(seated, r *action.Action) {
+	if seated.DefaultDefense != nil {
+		r.DefaultDefense = seated.DefaultDefense
+	}
+	field := conditionFieldKey(action.ConditionEdit{Field: action.FieldDefense})
+	ov, ok := s.overrides[seated.GetID()][field]
+	if !ok {
+		return
+	}
+	ov.ActionID = r.GetID()
+	if s.overrides[r.GetID()] == nil {
+		s.overrides[r.GetID()] = map[string]match.OverriddenValue{}
+	}
+	s.overrides[r.GetID()][field] = ov
+	delete(s.overrides[seated.GetID()], field)
 }
 
 // consumePendingFor pulls this character's about-to-open action off the queue, once per bar the
@@ -2016,6 +2104,7 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 	s.stackOnChainTail(a)
 	s.rollActionDice(a)
 	s.deriveSpeeds(a, s.swapBias(a.GetActorID()))
+	s.deriveSkills(a)
 	s.nextArrival++
 	s.noteArrival(a.GetID(), s.nextArrival)
 	s.activeQueue.Insert(a)
@@ -2188,11 +2277,16 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 // Action.SystemBias for how a re-derive stays honest about the bias the action actually
 // arrived under.
 //
-// systemBias is the engine-imposed advantage/disadvantage for THIS derivation — a reaction
-// that swapped out a queued action passes -1, everyone else passes 0, and ApplyMasterAction
-// passes back whatever this action was last derived under. It is a MODE of reading the dice
-// that already fell, never an Amount: RollAttempts holds both attempts, and the bias only
-// picks which one pickAttempt reads.
+// systemBias é a vantagem/desvantagem que o motor impõe NESTA derivação — uma reação que
+// trocou uma ação da fila passa -1, todo o resto passa 0, e o ApplyMasterAction devolve o viés
+// com que esta ação foi derivada da última vez. É um MODO de ler os dados, nunca um Amount:
+// cada nível tira um dado extra (deriveCheck) e o Derive mantém o melhor ou o pior par do monte.
+//
+// Os status do ator pesam aqui como em todo teste (statuseffect.RollEffectOf): a actionSpeed é
+// lida como um teste de Legerity sem domínio (o Enfraquecido físico a alcança), o moveSpeed
+// como um teste de movimento (o Lento, a lesão de movimento) e, numa fuga, também como a
+// restrição "escape" (o Caído e a Guarda aberta põem a desvantagem nos dois testes dela). Uma
+// mudança de status volta aqui pelo rederiveForStatus.
 func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if a == nil {
 		return
@@ -2205,7 +2299,6 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	// engine bias this action actually arrived under, instead of ApplyMasterAction having to
 	// pass a literal 0 that would silently flatten a reaction's swap-disadvantage to neutral.
 	a.SystemBias = systemBias
-	calc := service.RollCalculator{}
 	var ledger *match.ModifierLedger
 	if status, ok := s.statuses[a.GetActorID()]; ok {
 		ledger = &status.Ledger
@@ -2233,10 +2326,9 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 		// different dimension (DimDodge) and is read elsewhere, inside ResolveReaction, not here.
 		a.Speed.SkillName = enum.Legerity.String()
 		a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
-		// The system's bias makes a passive reading roll against the base value, like the master's
-		// (readPassiveBias): its dice fall here, the first time that bias asks for them.
-		s.ensureDiceForBias(&a.Speed.RollCheck, systemBias)
-		a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
+		// The system's bias makes a passive reading roll against the base value, like the master's:
+		// os dados que ele pede caem aqui, na primeira vez que os pede (deriveCheck).
+		a.Speed.Result = s.deriveCheck(&a.Speed.RollCheck, service.RollInput{
 			SkillName:  a.Speed.SkillName,
 			SkillValue: a.Speed.SkillValue,
 			Passive:    s.activeRound.GetMode() != enum.Race,
@@ -2245,6 +2337,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 			Dimension:  match.DimActionSpeed,
 			SystemBias: systemBias,
 			AgainstID:  againstID,
+			Status:     s.statusRoll(a.GetActorID(), statuseffect.Test{Skill: enum.Legerity}),
 		}).Total
 	}
 
@@ -2263,8 +2356,12 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	}
 	a.Move.Speed.SkillName = skill.String()
 	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
-	s.ensureDiceForBias(a.Move.Speed, systemBias)
-	a.Move.Speed.Result = calc.Derive(s.rules, a.Move.Speed.Attempts, service.RollInput{
+	moveTest := statuseffect.Test{Skill: skill, Domains: []statuseffect.Domain{statuseffect.DomainMovement}, MoveSpeed: true}
+	if a.ReactionKind.Displaces() {
+		// O teste de movimento de uma fuga é o segundo teste dela (spec §16.4 itens 34 e 37).
+		moveTest.Reaction = statuseffect.ReactionEscape
+	}
+	a.Move.Speed.Result = s.deriveCheck(a.Move.Speed, service.RollInput{
 		SkillName:  a.Move.Speed.SkillName,
 		SkillValue: a.Move.Speed.SkillValue,
 		Passive:    passive,
@@ -2272,6 +2369,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 		// No ledger on the move bar: the accumulated difference is an actionSpeed bonus.
 		Dimension:  match.DimActionSpeed,
 		SystemBias: systemBias,
+		Status:     s.statusRoll(a.GetActorID(), moveTest),
 	}).Total
 	// Charge is deliberately not read. The momentum accumulating into CharacterStatus.Velocity
 	// is the movement slice's, and the bar works without it (spec §5, Fase 3).
@@ -2286,6 +2384,87 @@ func skillValueOn(cs *csSheet.CharacterSheet, name enum.SkillName) int {
 		return 0
 	}
 	return v
+}
+
+// statusRoll é a leitura dos efeitos de status de quem testa para um teste que a sessão deriva
+// — a mesma do resolvedor (service.StatusRollOf).
+func (s *MatchSession) statusRoll(charID uuid.UUID, t statuseffect.Test) service.StatusRoll {
+	return service.StatusRollOf(s.statusEffects[charID], t)
+}
+
+// deriveSkills deriva o total de cada teste de skills[] (RollCheck.Result): os dados que já
+// caíram, o valor da ficha, a condição do mestre e os status do ator, lidos como um teste da
+// perícia sem domínio — um Tato declarado é a face do toque (spec §16.4 item 38), e um sentido
+// anulado falha automaticamente (total 0). Nenhum desfecho lê esse total ainda: a corrente de
+// testes vai ler (combat-engine.md § A corrente de testes).
+//
+// Um viés que pede dados que ainda não existem os tira uma vez (deriveCheck); um nome que não é
+// perícia (um teste de atributo) lê valor 0, como no resolvedor (skillValueOf).
+func (s *MatchSession) deriveSkills(a *action.Action) {
+	if a == nil {
+		return
+	}
+	s.deriveSkillList(a.GetActorID(), a.Skills)
+}
+
+// deriveSkillList é o deriveSkills sobre uma lista que ainda não está na ação (applySkillEdit).
+func (s *MatchSession) deriveSkillList(actorID uuid.UUID, skills []action.Skill) {
+	sheet := s.charSheets[actorID]
+	for i := range skills {
+		sk := &skills[i]
+		name, err := enum.SkillNameFrom(sk.SkillName)
+		if err != nil {
+			name = ""
+		}
+		if sk.RollCheck.SkillName == "" {
+			sk.RollCheck.SkillName = sk.SkillName
+		}
+		if sheet != nil && name != "" {
+			sk.SkillValue = skillValueOn(sheet, name)
+		}
+		sk.Result = s.deriveCheck(&sk.RollCheck, service.RollInput{
+			SkillName:  sk.SkillName,
+			SkillValue: sk.SkillValue,
+			Condition:  sk.Context.Condition,
+			Status:     s.statusRoll(actorID, statuseffect.Test{Skill: name}),
+		}).Total
+	}
+}
+
+// rederiveForStatus refaz, depois de uma mudança de status do personagem, o que a sessão deriva
+// das ações dele que ainda não abriram — as da fila e as reações dele no turno aberto: as
+// velocidades (com o mesmo viés do sistema com que cada uma chegou) e skills[]; da ação do
+// próprio turno aberto, só skills[] (a velocidade já foi usada para abri-la). É o caminho de
+// uma speed editada (ApplyMasterAction → deriveSpeeds): o agendador lê a velocidade na hora de
+// escolher, então uma penalidade nova já reordena a fila. Nenhum dado cai de novo; um viés que
+// cresce tira só os que faltam, uma vez.
+func (s *MatchSession) rederiveForStatus(charID uuid.UUID) {
+	for _, a := range s.activeQueue.All() {
+		if a.GetActorID() == charID {
+			s.deriveSpeeds(a, a.SystemBias)
+			s.deriveSkills(a)
+		}
+	}
+	t := s.openTurn()
+	if t == nil {
+		return
+	}
+	// A ação do próprio turno aberto já não deriva velocidade (abriu), mas skills[] segue os
+	// status como em toda edição.
+	if open := t.ActionRef(); open.GetActorID() == charID {
+		s.deriveSkills(open)
+	}
+	for _, r := range t.GetReactions() {
+		if r.GetActorID() != charID {
+			continue
+		}
+		live := t.ReactionRef(r.GetID())
+		// Uma reação livre não deriva velocidade nenhuma (AttachReaction): só skills[].
+		if !live.ReactionKind.IsFree() {
+			s.deriveSpeeds(live, live.SystemBias)
+		}
+		s.deriveSkills(live)
+	}
 }
 
 // rollActionDice drops the dice for every test the action carries, once, the moment it
@@ -2335,8 +2514,8 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 	if a.Defense != nil {
 		test(&a.Defense.RollCheck)
 	}
-	// A default reaction's dodge is passive: it rolls only if the master biases it
-	// (ensureDiceForBias), the same rule every passive reading follows.
+	// A default reaction's dodge is passive: it rolls only when a bias on it is read
+	// (ResolveTurn → DiceShort), the same rule every passive reading follows.
 	if a.Dodge != nil && !a.ReactionKind.IsPassive() {
 		test(&a.Dodge.RollCheck)
 	}

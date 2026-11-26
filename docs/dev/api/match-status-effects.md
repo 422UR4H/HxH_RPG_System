@@ -1,6 +1,6 @@
 # Match / Efeitos de status — Protocolo WebSocket
 
-**Status:** implementado (back, PR 1). Contrato de handoff para o front. Cada nome, campo e código
+**Status:** implementado (back, PR 1; rolagens e morte na fase 2). Contrato de handoff para o front. Cada nome, campo e código
 abaixo foi conferido contra `internal/app/game/message.go`, `status_effects.go`, `sight.go`,
 `internal/domain/statuseffect/` e os testes e2e (`status_effects_e2e_test.go`,
 `sight_e2e_test.go`, `status_block_e2e_test.go`). **Se achar divergência, o bug é do contrato**:
@@ -19,8 +19,10 @@ Complementa [`match-combat-ws.md`](match-combat-ws.md) (envelope, `error`, `matc
 
 Um **efeito** é uma condição que o mestre põe num personagem da partida (PJ ou NPC): Paralisado,
 Preso, Escondido… Cada efeito tem um `id`, um `kind` (tipo), parâmetros próprios do tipo, um
-apelido opcional e uma **lista de quem o vê**. Nesta fase **só o mestre** aplica, edita e remove
-(não há teste automático nem origem automática — ver [§10](#10-o-que-ainda-não-existe)).
+apelido opcional e uma **lista de quem o vê**. **Só o mestre** aplica, edita e remove — com uma
+exceção: o **Morto** (`dead`) entra só pela regra, no fechamento do turno, e o mestre só o
+**desfaz** ([§6](#morto-dead)). Não há teste automático nem origem automática — ver
+[§10](#10-o-que-ainda-não-existe).
 
 O que o servidor **faz** com um efeito já nesta fase:
 
@@ -31,9 +33,14 @@ O que o servidor **faz** com um efeito já nesta fase:
 - **Esconde** (`hidden`): o personagem some do mapa, das barras e dos status de quem não o
   percebeu ([§7](#7-quem-vê-o-quê-lista-e-visão)).
 
-O que **não** faz: nada que mude uma rolagem (penalidade, desvantagem, falha automática), nenhum
-dano por round, nenhuma recuperação. Os parâmetros dessas peças são guardados e mostrados, mas
-ainda não pesam. Lista completa em [§10](#10-o-que-ainda-não-existe).
+- **Pesa nas rolagens** (fase 2): vantagem/desvantagem, penalidade e falha automática entram nos
+  testes que o servidor deriva (acerto, reações, velocidades, `skills[]`) — [§6](#o-que-pesa-nas-rolagens).
+- **Mata** (fase 2): o HP abaixo do mínimo da barra, no fechamento do turno, aplica o `dead`
+  ([§6](#morto-dead)).
+
+O que **não** faz: nenhum dano por round, nenhuma recuperação, nenhum teste automático. Os
+parâmetros dessas peças (`hpPerRound`, `points`) são guardados e mostrados, mas ainda não pesam.
+Lista completa em [§10](#10-o-que-ainda-não-existe).
 
 ## 2. Índice
 
@@ -43,7 +50,7 @@ ainda não pesam. Lista completa em [§10](#10-o-que-ainda-não-existe).
 |---|---|
 | [`apply_status_effect`](#apply_status_effect) | aplica um efeito a um ou mais personagens (tudo ou nada) |
 | [`edit_status_effect`](#edit_status_effect) | troca parâmetros, apelido e/ou lista de quem vê de um efeito |
-| [`remove_status_effect`](#remove_status_effect) | tira um efeito (aplicado no mesmo turno aberto: desfaz) |
+| [`remove_status_effect`](#remove_status_effect) | tira um efeito (aplicado no mesmo turno aberto: desfaz); no `dead`, aceita `hp` |
 | [`relink_status_effect`](#relink_status_effect) | troca a âncora (`actionId`) das mudanças de um efeito no turno aberto |
 
 **Servidor → cliente**
@@ -94,6 +101,7 @@ servidor nunca os manda como valor — só dentro do texto das recusas (`blocked
 | `compelled` | Compelido | escondido |
 | `controlled` | Controlado | escondido |
 | `hidden` | Escondido | escondido (é a presença do personagem — ver [§7](#hidden-escondido)) |
+| `dead` | Morto | **público** (contém o Inconsciente; só a regra o aplica — ver [§6](#morto-dead)) |
 
 ### Variantes
 
@@ -144,7 +152,7 @@ valor neutro, é recusado (`status_effect_invalid`). Na resposta (`status_effect
 | `bleeding` `burning` `freezing` `poisoned` | `hpPerRound` (int) | não | padrão **1**; ≥ 1 |
 | `compelled` | `conduct` (texto), `irresistible` (bool) | `conduct` sim | `conduct` 1–255 caracteres depois de aparado; `irresistible` padrão `false` |
 | `controlled` | `controllerId` (uuid) | não | se vier: personagem **da sessão** e **diferente do alvo** |
-| `unconscious` `restrained` `prone` `airborne` `openGuard` `asphyxiating` `hidden` | — (nenhum) | — | enviar `params: {}`; qualquer campo é recusado |
+| `unconscious` `restrained` `prone` `airborne` `openGuard` `asphyxiating` `hidden` `dead` | — (nenhum) | — | enviar `params: {}`; qualquer campo é recusado |
 
 **`sense`.** O envio exige `sense` no corpo do comando (não em `params`).
 
@@ -219,7 +227,7 @@ pode mais dar é refeita.
 | `match_already_ended` | partida encerrada |
 | `invalid_payload` | JSON do `payload` malformado; `characterIds` vazio, com id nulo ou repetido; `sense`, `aptitude`, `level`, `faces[]`, `domains[]`, `injuries` (domínio ou nível) desconhecidos; `visibility.mode` desconhecido; **`visibility.playerIds` com `mode` diferente de `"players"`** |
 | `unknown_character` | um id não é ficha da sessão |
-| `status_effect_invalid` | `kind` desconhecido; parâmetro ausente, fora da faixa ou **estranho ao tipo**; `sense` anulado com `disadvantage`/`penalty` (mesmo `false`/`0`); `controllerId` igual ao alvo ou fora da partida; `alias` longo; `visibility.playerIds` com o mestre, alguém fora da partida, repetido ou uuid nulo; `actionId` sem turno aberto ou fora dele |
+| `status_effect_invalid` | `kind` desconhecido; **`kind: "dead"`** (`O Morto entra só pela regra.`); parâmetro ausente, fora da faixa ou **estranho ao tipo**; `sense` anulado com `disadvantage`/`penalty` (mesmo `false`/`0`); `controllerId` igual ao alvo ou fora da partida; `alias` longo; `visibility.playerIds` com o mestre, alguém fora da partida, repetido ou uuid nulo; `actionId` sem turno aberto ou fora dele |
 | `status_effect_exists` | um dos personagens já tem o `(kind, variante)` |
 | `game_error` | `"status effects are not available"` (servidor sem o caso de uso) e qualquer outra falha |
 
@@ -261,7 +269,9 @@ efeito com esse id).
 { "type": "remove_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }
 ```
 
-`actionId` é opcional, com a mesma regra de `apply_status_effect`. `restoreCancelledActions`
+`actionId` é opcional, com a mesma regra de `apply_status_effect`. `hp` (int, opcional) só vale
+ao tirar o **Morto** — ver [Desfazer a morte](#desfazer-a-morte-remove_status_effect-com-hp), abaixo.
+`restoreCancelledActions`
 (bool, opcional, ausente = `false`) pede que o que o efeito tirou volte — as ações da fila que ele
 cancelou **e** as reações não abertas que ele trocou no turno — só vale no desfazer no turno
 (abaixo).
@@ -331,6 +341,36 @@ reação no turno aberto, `resolution_updated` ao mestre. **Não** vem `action_e
 ack de um envio do cliente, casado pela ordem dos envios, e um ack sem pedido cairia no envio
 errado. Por reação devolvida: [`reaction_restored`](#reaction_restored) e o `resolution_updated`
 do mestre (a reação pendente volta a ser ela, `seated: false` se era do jogador).
+
+#### Desfazer a morte (`remove_status_effect` com `hp`)
+
+Remover o `dead` é o **desfazer do mestre** (o Morto não tem saída própria: nada o tira sozinho).
+O personagem volta com o HP que o mestre disser:
+
+```json
+{ "type": "remove_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "hp": 5 } }
+```
+
+| `hp` | Resultado |
+|---|---|
+| ausente | o HP volta ao **mínimo** da barra (o máximo negativo, ex.: −40) **só se estiver abaixo dele**; senão fica como está. Nunca rebaixa. |
+| inteiro | o HP vira esse valor, que precisa estar em `[mínimo, máximo]` da barra de vida do personagem. Igual ao HP de agora: não é mudança (nada gravado nem avisado). |
+
+- **Só no `dead`.** `hp` em qualquer outro tipo é `status_effect_invalid`.
+- **Dispara**, além do `status_effects_updated` da remoção, um
+  [`character_hp_changed`](match-combat-ws.md#character_hp_changed) ao mestre e ao dono **quando o
+  HP mudou**, com `hpChange` **positivo** (`HP de agora − HP de antes`: voltar de −40 para 5 manda
+  `hpChange: 45`). Com um turno aberto, o `resolution_updated` do mestre é refeito (`dies` depende do
+  HP).
+- **Gravação.** Fora de turno, o HP é gravado **na mesma transação** da remoção do status. Dentro de um
+  turno aberto, vai junto do fechamento dele, como qualquer ficha que o fechamento escreve. Uma
+  gravação que falha deixa as duas coisas (status e HP) pendentes juntas.
+- **A marca de morte da ficha** (`deadAt`, em [`character-sheet.md`](character-sheet.md)) **não** é
+  tocada aqui: só o fim da partida a põe ou a limpa ([§6](#morto-dead)).
+
+**Erros** (todos `status_effect_invalid`, só o mestre vê): `Só a remoção do Morto aceita HP.`;
+`O HP precisa ficar entre <mínimo> e <máximo>.`; `Esta ficha não tem barra de vida.` (defensivo:
+uma ficha real sempre tem).
 
 ### `action_restored`
 
@@ -421,20 +461,21 @@ nulo) · `status_effect_invalid` (sem turno aberto; `actionId` que não é do tu
 
 ## 6. O que um efeito bloqueia
 
-Um efeito é composto de peças. Nesta fase valem estas (as demais só são guardadas — [§10](#10-o-que-ainda-não-existe)):
+Um efeito é composto de peças. Valem estas (as demais só são guardadas — [§10](#10-o-que-ainda-não-existe)). As peças que **pesam em dados** estão em [O que pesa nas rolagens](#o-que-pesa-nas-rolagens), logo abaixo dos bloqueios:
 
 | Peça | Vem de | Efeito |
 |---|---|---|
-| não age | `stupefied`, `stunned`, `unconscious` | recusa toda ação não-reação |
-| não reage | `stupefied`, `stunned`, `unconscious` | recusa toda reação, menos `nothing` |
-| domínio inutilizado | `paralyzed` (os `domains`), `stunned`/`unconscious` (os quatro) | recusa ação/reação que usa o domínio |
-| sem deslocamento | `restrained`, `paralyzed` com `movement`, `stunned`/`unconscious` | recusa a ação de mover e as fugas |
-| reação proibida | `restrained` (escape); `airborne` (esquiva por reflexo, escape); `openGuard` (esquiva por reflexo, aparo) | recusa a reação |
+| não age | `stupefied`, `stunned`, `unconscious`, `dead` | recusa toda ação não-reação |
+| não reage | `stupefied`, `stunned`, `unconscious`, `dead` | recusa toda reação, menos `nothing` |
+| domínio inutilizado | `paralyzed` (os `domains`), `stunned`/`unconscious`/`dead` (os quatro) | recusa ação/reação que usa o domínio |
+| sem deslocamento | `restrained`, `paralyzed` com `movement`, `stunned`/`unconscious`/`dead` | recusa a ação de mover e as fugas |
+| reação proibida | `restrained` (escape); `airborne` (esquiva por reflexo, escape); `openGuard` (esquiva por reflexo, repelir) | recusa a reação |
 | aviso de domínio | `injured` com `disabled` | **não bloqueia**; vira `statusNotes` |
 | conduta | `compelled` | **não bloqueia**; vira `statusNotes` |
 
-`controlled`, `slowed`, `sense`, `weakened`, `hidden` e os de dano por round **não bloqueiam
-nada** aqui.
+`controlled`, `slowed`, `sense`, `weakened`, `prone`, `hidden` e os de dano por round **não
+bloqueiam nada** aqui (Caído e a perda de reações são de peso em dado, abaixo). O `dead` bloqueia
+**exatamente como o `unconscious`**: contém-no.
 
 **Ações** (`enqueue_action`): componentes `attack`/`feint` usam o domínio `attack`; `defense`,
 `defense`; `dodge`, `dodge`; `move`, `movement`. `interact` e ação só de perícia só são
@@ -450,10 +491,74 @@ recusados por "não age".
 | `closedDodge` | esquiva por reflexo + evasão | |
 | `escape`, `escapeGuard` | movimento **e** esquiva; sem "sem deslocamento" | |
 | `closedEscape` | movimento e esquiva + evasão; sem "sem deslocamento" | |
-| `repel` | aparo (domínio defesa) | |
+| `repel` | repelir: domínio ataque **e** domínio defesa | travar qualquer um dos dois recusa (a mensagem nomeia o travado: "não pode atacar" / "não pode defender"). O repelir está nos dois porque é atacar o ataque, e porque o golpe que você ia dar contra quem te ataca pode virar o repelir sem penalidade |
 
 Quando a defesa está inutilizada ou proibida, uma reação `dodge`/`closedDodge`/`escapeGuard`
 também perde a defesa padrão de reserva. Isso não aparece no fio.
+
+### O que pesa nas rolagens
+
+Fase 2: os efeitos entram nos testes que o **servidor** deriva, somados à condição do mestre e ao
+viés do sistema (a troca de reação). **O front não calcula nada disto**: lê os números prontos
+(`total`, `attempts`, `autoFailed` — [`match-combat-ws.md`](match-combat-ws.md)). A tabela diz o
+que cada efeito faz a qual teste, para a UI poder explicar:
+
+| Efeito | O que faz |
+|---|---|
+| `injured` (`hurt` ou `disabled`) | 1 desvantagem em **todo** teste do domínio ferido (o repelir é teste de ataque **e** de defesa). |
+| `slowed` | penalidade (−`penalty`) na velocidade de movimento, inclusive a de uma fuga. |
+| `sense` **prejudicado** | a `disadvantage` (1 nível) e a `penalty` nos testes da perícia do sentido. No Tato só a face **toque** pesa: um teste de Tato declarado numa ação é lido como toque (provisório, spec §16.4 item 38). |
+| `sense` **anulado** | **falha automática** nos testes da perícia do sentido (não rola, `total` 0, `autoFailed`). A **Visão** anulada põe também 1 desvantagem no acerto, na defesa e na esquiva. |
+| `sense` Tato com a face `balance` | a desvantagem/penalidade (anulado: 1 desvantagem) pesa em **todo** teste de ataque, defesa, esquiva e movimento. Não há teste de equilíbrio automático ([§10](#10-o-que-ainda-não-existe)). |
+| `weakened` | `disadvantage` e `penalty` em **toda** perícia da aptidão: acerto, esquiva por reflexo, evasão, defesa, repelir, velocidade de ação, de movimento e `skills[]`. As perícias do conjunto espiritual (Focus, WillPower, SelfKnowledge, Coa, Mop, Aop) são espirituais; **toda outra perícia é física**; não há perícia mental. |
+| `stunned`, `unconscious`, `dead` | falha automática em **todo** teste de perícia de sentido (os cinco). |
+| `prone` | 1 desvantagem na esquiva por reflexo e no repelir, e nos **dois** testes (reflexo e movimento) dos três escapes. **Provisório** (TODO até o redesenho do movimento: a regra por tipo de escape — "rolar" talvez sem penalidade — é só um ponto possível desse desenho, não regra). |
+| `openGuard` | **sem** esquiva por reflexo e **sem** repelir (proibidos); a defesa padrão passa a ser **só rolada** (nunca passiva); 1 desvantagem nos dois testes dos três escapes. |
+
+**Um status pesa uma vez só no mesmo teste.** O repelir é **um teste só** em dois domínios
+(ataque e defesa) e recebe o que pesa em cada um; mas um efeito que alcança os dois (a Visão
+anulada, o Tato no equilíbrio, um `injured` no ataque e na defesa) pesa **uma vez**, pela parte
+mais forte — a Visão anulada dá 1 desvantagem no repelir, não 2. Efeitos diferentes somam (Visão
+anulada + `injured` no ataque = 2). Num teste de um domínio só nada muda. A finta não tem total
+derivado e não recebe nada (quando tiver, será teste de ataque).
+
+Como entram: cada desvantagem é **um nível** de viés, que se soma aos do mestre e do sistema (cada
+nível cancela um do sinal oposto; teto de 10). A penalidade soma ao modificador. A falha
+automática vence tudo: não há dado nem crítico. O dado de um teste **nunca é rolado de novo**; um
+viés que cresce tira só os dados que faltam, uma vez ([`match-combat-ws.md`](match-combat-ws.md#o-teste-de-dados-vantagem-desvantagem-e-crítico)).
+
+**Mudar um efeito re-deriva** as velocidades das ações **na fila** do personagem (uma penalidade nova
+pode reordená-la), pelo mesmo caminho de uma velocidade editada: o mestre recebe de novo o
+`action_queued` de cada ação da fila cuja descrição mudou (velocidade, `skills[]`, `statusNotes`), e
+todos recebem `bars_updated`. Com o turno aberto, o cálculo do
+mestre (`resolution_updated`) é refeito.
+
+Ainda **não** pesa: a recuperação/dano por round, os testes automáticos, o Fadiga/Asfixia e o Nen.
+
+### Morto (`dead`)
+
+O personagem **morre** quando o HP, depois do dano que o fechamento do turno **de fato aplicou**,
+fica **abaixo do mínimo da barra de vida** (um além do máximo negativo; ficar **no** mínimo é vivo).
+O mínimo é negativo e por ficha: `−⌊10 + nível de Vitality + valor de Resistance + bônus dos
+Físicos⌋` (ver `status.health.min` em [`character-sheet.md`](character-sheet.md)). Um golpe grande
+deixa o HP no valor exato (−40 continua −40; o HP não é cortado no mínimo).
+
+- **Quem aplica:** só o sistema, no fechamento do turno (`close_turn`, `open_next_action`,
+  `pull_action`). Com o turno **aberto**, o mestre só vê no cálculo (`targets[].dies`, só dele —
+  [`match-combat-ws.md`](match-combat-ws.md#resolution_updated)); **nada é aplicado antes do
+  fechamento**. `apply_status_effect` com `kind: "dead"` é recusado (`status_effect_invalid`,
+  `O Morto entra só pela regra.`).
+- **O que é:** `kind: "dead"`, **público** por padrão (a mesa o vê pela névoa como qualquer
+  público), sem parâmetros, sem apelido. **Contém o Inconsciente** (bloqueia e falha igual), mas
+  **não** traz o Caído. Não tem saída própria.
+- **Ordem no fechamento:** `character_hp_changed` (o HP que matou) → `action_cancelled` das ações
+  que o Morto tirou da fila → `status_effects_updated` com o `dead` (a quem vê o personagem) →
+  `turn_closed`. O evento de histórico do `dead` é gravado na transação do turno que o causou,
+  com esse turno como causa (`actionId`).
+- **Desfazer:** o mestre remove o `dead` ([`remove_status_effect` com `hp`](#desfazer-a-morte-remove_status_effect-com-hp)).
+- **A ficha só é marcada no fim da partida:** `deadAt` (em `character-sheet.md`) recebe o instante
+  real do fim; uma ficha que já tinha `deadAt` mantém a data anterior; quem teve a morte desfeita
+  tem `deadAt` limpo no mesmo instante. Dentro da partida, o que diz "morto" é o status.
 
 ### `blocked_by_status`
 
@@ -730,15 +835,21 @@ completo; o `statusEffects` mais antigo fica na tela até a próxima mudança do
 
 Para o front não procurar. **Nada disto está no fio**:
 
-- **Tudo o que muda uma rolagem**: penalidade nos testes, "defesa só rolada" (`openGuard`),
-  desvantagem em reação, falha automática de sentido/Atordoado, Lento, e a aplicação da
-  desvantagem do Tato/equilíbrio (G1). Os parâmetros são guardados; **não pesam em dado nenhum**
-  ainda (próxima fase, junto da regra nova de vantagem/desvantagem).
-- **Testes automáticos** (resistência ao entrar, teste de equilíbrio do Tato, Recuperação).
-  Quem aplica é só o mestre, à mão; ele digita os `points`.
-- **Dano por round e Recuperação por round** (`hpPerRound`, `points` só são exibidos), HP
-  negativo, Inconsciente automático, morte.
+- **Testes automáticos** (resistência ao entrar, teste de equilíbrio do Tato, Recuperação,
+  Inconsciente automático). Quem aplica é só o mestre, à mão; ele digita os `points`, que só são
+  exibidos.
+- **Dano e Recuperação por round** (`hpPerRound`, `points`): guardados e mostrados, sem efeito.
+  Tampouco existe um comando do mestre para **editar o HP** diretamente: o HP só muda pelo dano do
+  fechamento do turno e pela volta do Morto (`remove_status_effect` com `hp`).
 - **Asfixia** e Fadiga: `asphyxiating` existe como rótulo, sem mecânica.
+- **Escapes e movimento**: a desvantagem do Caído e da Guarda aberta nos dois testes dos três
+  escapes é **provisória** (TODO até o redesenho do movimento).
+- **Aplicar o `dead` à mão**: recusado de propósito; o Morto entra só pela regra, no fechamento do
+  turno, e só sai pelo desfazer do mestre ([§6](#morto-dead)).
+- **Os testes de `skills[]` ainda não decidem desfecho**: ganham o total derivado
+  (`rollCheck.result`, com condição e status), mas nada o lê até a corrente de testes.
+- **Morte e névoa**: o `dead` é público e segue a névoa como todo status público; a mesa não recebe
+  nenhum aviso próprio ("quem morreu") além do status e do HP que o mestre/dono já veem.
 - **"Não usa habilidades"** (Atônito/Atordoado/Paralisado): espera o Nen (TODO).
 - **Revelar a um jogador só**: a revelação do histórico é **para todos** (ver [§14](#14-histórico)); por jogador é futuro.
 - **Push no WebSocket depois de uma revelação**: não existe; o front relê o histórico.
@@ -792,7 +903,7 @@ não grava evento algum.
 | `match_already_ended` | `A partida já terminou.` | partida encerrada |
 | `invalid_payload` | frase em português que diz o que está errado (ex.: `Escolha ao menos um personagem.`) | ver [§5](#apply_status_effect) |
 | `unknown_character` | `Esse personagem não está na partida.` | id de ficha fora da sessão |
-| `status_effect_invalid` | frase em português (ex.: `Informe os pontos do efeito.`, `Esse efeito não tem pontos.`, `Esse efeito não existe.`, `Um jogador foi escolhido duas vezes.`, `O controlador não pode ser o próprio personagem.`, `Para escolher jogadores, marque a opção de jogadores específicos.`, `Escolha a ação do turno aberto ou uma reação dela.`, `Só dá para mudar a ligação do efeito com um turno aberto.`) | parâmetro/lista inválidos; `actionId` sem turno aberto ou fora dele (`relink` inclusive) |
+| `status_effect_invalid` | frase em português (ex.: `O Morto entra só pela regra.`, `Só a remoção do Morto aceita HP.`, `O HP precisa ficar entre -40 e 55.`, `Esta ficha não tem barra de vida.`, `Informe os pontos do efeito.`, `Esse efeito não tem pontos.`, `Esse efeito não existe.`, `Um jogador foi escolhido duas vezes.`, `O controlador não pode ser o próprio personagem.`, `Para escolher jogadores, marque a opção de jogadores específicos.`, `Escolha a ação do turno aberto ou uma reação dela.`, `Só dá para mudar a ligação do efeito com um turno aberto.`) | parâmetro/lista inválidos; `actionId` sem turno aberto ou fora dele (`relink` inclusive) |
 | `status_effect_exists` | `O personagem já está <estado>.` (ex.: `O personagem já está paralisado.`; sentido/aptidão: `O personagem já está com a visão afetada.`) | repetição de `(kind, variante)` |
 | `status_effect_not_found` | `Esse efeito não está mais no personagem.` (relink: `Esse efeito não tem mudança neste turno.`) | edit/remove de id desconhecido; `relink` de efeito sem mudança neste turno |
 | `blocked_by_status` | `<nick> não pode <o que> porque está <estado>.` | `enqueue_action`, `attach_reaction` |

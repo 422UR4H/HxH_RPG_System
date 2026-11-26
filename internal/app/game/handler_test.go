@@ -1250,9 +1250,9 @@ func TestPlayerCannotCancelLobby(t *testing.T) {
 // wsConn helpers the reaction-chain tests already exercise close_turn's neighbours with.
 func TestE2E_CloseTurn(t *testing.T) {
 	faces := []int{
-		6, 4, 1, 1, // Attack.Hit: primary 6,4 (→10); secondary 1,1 (unused filler)
+		6, 4, // Attack.Hit: 6,4 (→10)
 		7, 3, // Sword damage: D10=7, D4=3 → raw 7+3+2=12
-		5, 5, 5, 5, // A's dodge: primary 5,5; secondary 5,5
+		5, 5, // A's dodge: 5,5
 	}
 	f := newAreaFixture(t, faces)
 	defer f.server.Close()

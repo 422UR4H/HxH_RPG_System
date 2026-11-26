@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -9,38 +10,36 @@ import (
 	"github.com/google/uuid"
 )
 
-// attempts builds a RollAttempts with both sets, so a Derive test can name exact numbers
-// without going through Roll at all. Roll itself has a seam now — see RollSource.
-func attempts(primary, secondary []int) action.RollAttempts {
-	return action.RollAttempts{Primary: primary, Secondary: secondary}
+// attempts monta um RollAttempts com o conjunto e os extras, para um teste de Derive nomear
+// números exatos sem passar por Roll. Roll tem sua própria costura — ver RollSource.
+func attempts(primary, extra []int) action.RollAttempts {
+	return action.RollAttempts{Primary: primary, Extra: extra}
 }
 
 func TestRollCalculator_Roll(t *testing.T) {
 	calc := service.RollCalculator{}
 
-	t.Run("2d10 rolls two dice in both sets", func(t *testing.T) {
+	t.Run("2d10 rolls only the primary pair", func(t *testing.T) {
 		got := calc.Roll(match.NewDefaultMatchRules(), nil)
 
-		for name, set := range map[string][]int{"primary": got.Primary, "secondary": got.Secondary} {
-			if len(set) != 2 {
-				t.Fatalf("%s: expected 2 dice, got %d", name, len(set))
-			}
-			for i, d := range set {
-				if d < 1 || d > 10 {
-					t.Errorf("%s die %d out of range: %d", name, i, d)
-				}
+		if len(got.Primary) != 2 || len(got.Extra) != 0 {
+			t.Fatalf("expected 2 primary dice and no extra, got %v / %v", got.Primary, got.Extra)
+		}
+		for i, d := range got.Primary {
+			if d < 1 || d > 10 {
+				t.Errorf("die %d out of range: %d", i, d)
 			}
 		}
 	})
 
-	t.Run("d20 rolls one die in both sets", func(t *testing.T) {
+	t.Run("d20 rolls one die", func(t *testing.T) {
 		rules := match.NewDefaultMatchRules()
 		rules.DiceSet = match.DiceSetD20
 
 		got := calc.Roll(rules, nil)
 
-		if len(got.Primary) != 1 || len(got.Secondary) != 1 {
-			t.Fatalf("expected 1 die per set, got %d and %d", len(got.Primary), len(got.Secondary))
+		if len(got.Primary) != 1 || len(got.Extra) != 0 {
+			t.Fatalf("expected 1 primary die and no extra, got %v / %v", got.Primary, got.Extra)
 		}
 		if got.Primary[0] < 1 || got.Primary[0] > 20 {
 			t.Errorf("die out of range: %d", got.Primary[0])
@@ -59,8 +58,8 @@ func TestRollCalculator_Derive_Criticals(t *testing.T) {
 		wantCrit    bool
 		wantCritErr bool
 	}{
-		{"double ten is a critical", []int{10, 10}, 25, true, false},
-		{"double one is a critical failure", []int{1, 1}, 7, false, true},
+		{"double ten is a critical", []int{10, 10}, 50, true, false},
+		{"double one is a critical failure", []int{1, 1}, 3, false, true},
 		{"nine and ten is neither", []int{9, 10}, 24, false, false},
 		{"one and ten is neither", []int{1, 10}, 16, false, false},
 		{"middling roll is neither", []int{4, 6}, 15, false, false},
@@ -96,8 +95,8 @@ func TestRollCalculator_Derive_D20Criticals(t *testing.T) {
 
 	t.Run("natural 20 is a critical", func(t *testing.T) {
 		out := calc.Derive(rules, attempts([]int{20}, nil), service.RollInput{SkillValue: 3})
-		if !out.IsCritical || out.Total != 23 {
-			t.Errorf("expected critical with total 23, got %v / %d", out.IsCritical, out.Total)
+		if !out.IsCritical || out.Total != 46 {
+			t.Errorf("expected critical with total 46, got %v / %d", out.IsCritical, out.Total)
 		}
 	})
 
@@ -202,19 +201,19 @@ func TestRollCalculator_Derive_PassiveWithTheMastersBias(t *testing.T) {
 func TestRollCalculator_Derive_Bias(t *testing.T) {
 	calc := service.RollCalculator{}
 	rules := match.NewDefaultMatchRules()
-	both := attempts([]int{3, 4}, []int{8, 9}) // 7 vs 17
+	both := attempts([]int{3, 4}, []int{8, 9}) // um nível lê [3 4 8]
 
-	t.Run("advantage takes the better set", func(t *testing.T) {
+	t.Run("advantage keeps the best pair of the pool", func(t *testing.T) {
 		out := calc.Derive(rules, both, service.RollInput{
 			SkillValue: 0,
 			Condition:  &action.RollCondition{Bias: 1},
 		})
-		if out.DiceTotal != 17 {
-			t.Errorf("expected 17, got %d", out.DiceTotal)
+		if out.DiceTotal != 12 {
+			t.Errorf("expected 12 (4+8), got %d", out.DiceTotal)
 		}
 	})
 
-	t.Run("disadvantage takes the worse set", func(t *testing.T) {
+	t.Run("disadvantage keeps the worst pair of the pool", func(t *testing.T) {
 		out := calc.Derive(rules, both, service.RollInput{
 			SkillValue: 0,
 			Condition:  &action.RollCondition{Bias: -1},
@@ -263,16 +262,270 @@ func TestRollCalculator_Derive_Bias(t *testing.T) {
 			t.Errorf("expected net bias -1, got %d", out.Bias)
 		}
 		if out.DiceTotal != 7 {
-			t.Errorf("expected the worse set, got %d", out.DiceTotal)
+			t.Errorf("expected the worse pair, got %d", out.DiceTotal)
 		}
 	})
 
-	t.Run("falls back to the primary set when no secondary was rolled", func(t *testing.T) {
+	t.Run("reads the primary set alone when no extra fell yet", func(t *testing.T) {
 		out := calc.Derive(rules, attempts([]int{5, 5}, nil), service.RollInput{
 			Condition: &action.RollCondition{Bias: 1},
 		})
-		if out.DiceTotal != 10 {
-			t.Errorf("expected 10, got %d", out.DiceTotal)
+		if out.DiceTotal != 10 || out.Short != 1 {
+			t.Errorf("expected 10 with one die short, got %d / short %d", out.DiceTotal, out.Short)
+		}
+	})
+}
+
+func TestRollCalculator_Derive_DicePool(t *testing.T) {
+	calc := service.RollCalculator{}
+	rules := match.NewDefaultMatchRules()
+	d20 := match.NewDefaultMatchRules()
+	d20.DiceSet = match.DiceSetD20
+	bias := func(b int) *action.RollCondition { return &action.RollCondition{Bias: b} }
+
+	t.Run("advantage two keeps best pair of four", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{3, 4}, []int{9, 10}), service.RollInput{Condition: bias(2)})
+		if out.DiceTotal != 19 || !slices.Equal(out.Dice, []int{9, 10}) {
+			t.Fatalf("DiceTotal = %d, Dice = %v; want 19 and [9 10]", out.DiceTotal, out.Dice)
+		}
+		if !slices.Equal(out.Rolled, []int{3, 4, 9, 10}) {
+			t.Errorf("Rolled = %v, want the whole pool [3 4 9 10]", out.Rolled)
+		}
+		if out.Short != 0 {
+			t.Errorf("Short = %d, want 0", out.Short)
+		}
+	})
+
+	t.Run("disadvantage keeps worst pair", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{5, 6}, []int{2, 9}), service.RollInput{Condition: bias(-2)})
+		if out.DiceTotal != 7 || !slices.Equal(out.Dice, []int{5, 2}) {
+			t.Fatalf("DiceTotal = %d, Dice = %v; want 7 and [5 2] (pool order)", out.DiceTotal, out.Dice)
+		}
+	})
+
+	t.Run("levels cancel one by one", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{3, 4}, []int{9, 10}), service.RollInput{
+			Condition: bias(2), SystemBias: -1,
+		})
+		if out.Bias != 1 {
+			t.Fatalf("Bias = %d, want 1", out.Bias)
+		}
+		if out.DiceTotal != 13 || !slices.Equal(out.Rolled, []int{3, 4, 9}) {
+			t.Fatalf("DiceTotal = %d, Rolled = %v; want 13 from [3 4 9]", out.DiceTotal, out.Rolled)
+		}
+	})
+
+	t.Run("d20 keeps one of three", func(t *testing.T) {
+		a := attempts([]int{7}, []int{15, 3})
+		if out := calc.Derive(d20, a, service.RollInput{Condition: bias(2)}); out.DiceTotal != 15 {
+			t.Errorf("advantage: DiceTotal = %d, want 15", out.DiceTotal)
+		}
+		if out := calc.Derive(d20, a, service.RollInput{Condition: bias(-2)}); out.DiceTotal != 3 {
+			t.Errorf("disadvantage: DiceTotal = %d, want 3", out.DiceTotal)
+		}
+	})
+
+	t.Run("short reports missing extras", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{3, 4}, []int{9}), service.RollInput{Condition: bias(3)})
+		if out.Short != 2 {
+			t.Fatalf("Short = %d, want 2", out.Short)
+		}
+		if out.DiceTotal != 13 {
+			t.Errorf("DiceTotal = %d, want 13 — derives with the dice that exist", out.DiceTotal)
+		}
+	})
+
+	t.Run("short counts the base set on an empty passive", func(t *testing.T) {
+		out := calc.Derive(rules, action.RollAttempts{}, service.RollInput{Passive: true, Condition: bias(2)})
+		if out.Short != 4 {
+			t.Fatalf("Short = %d, want 4 (2 of the set + 2 levels)", out.Short)
+		}
+		if out.DiceTotal != 11 {
+			t.Errorf("DiceTotal = %d, want the base value 11 while no die fell", out.DiceTotal)
+		}
+		if neutral := calc.Derive(rules, action.RollAttempts{}, service.RollInput{Passive: true}); neutral.Short != 0 {
+			t.Errorf("a neutral passive needs no dice, got Short %d", neutral.Short)
+		}
+	})
+
+	t.Run("passive with two levels compares kept pair with base", func(t *testing.T) {
+		passive := func(primary, extra []int, b int) service.RollOutcome {
+			return calc.Derive(rules, attempts(primary, extra), service.RollInput{
+				SkillValue: 6, Passive: true, Condition: bias(b),
+			})
+		}
+		if out := passive([]int{2, 3}, []int{9, 8}, 2); out.DiceTotal != 17 || out.Total != 23 {
+			t.Errorf("advantage: got %d / %d, want the kept pair 17 over the base", out.DiceTotal, out.Total)
+		}
+		if out := passive([]int{2, 3}, []int{4, 1}, 2); out.DiceTotal != 11 {
+			t.Errorf("advantage under the base: DiceTotal = %d, want the base 11", out.DiceTotal)
+		}
+		if out := passive([]int{9, 8}, []int{2, 3}, -2); out.DiceTotal != 5 {
+			t.Errorf("disadvantage: DiceTotal = %d, want the kept pair 5 under the base", out.DiceTotal)
+		}
+		if out := passive([]int{9, 8}, []int{7, 6}, -2); out.DiceTotal != 11 {
+			t.Errorf("disadvantage over the base: DiceTotal = %d, want the base 11", out.DiceTotal)
+		}
+		tie := passive([]int{5, 6}, []int{1, 2}, 2)
+		if tie.DiceTotal != 11 || tie.IsCritical || tie.IsCriticalFailure {
+			t.Errorf("tie: got %+v, want the base 11", tie)
+		}
+		if !slices.Equal(tie.Dice, []int{5, 6}) {
+			t.Errorf("tie: Dice = %v, want the kept pair still shown", tie.Dice)
+		}
+		if !tie.Passive {
+			t.Error("still a passive reading — the bias only adds the dice to it")
+		}
+	})
+
+	t.Run("bias capped at ten levels", func(t *testing.T) {
+		extra := []int{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9, 9}
+		out := calc.Derive(rules, attempts([]int{1, 1}, extra), service.RollInput{Condition: bias(15)})
+		if out.Bias != match.MaxBiasLevels {
+			t.Fatalf("Bias = %d, want %d", out.Bias, match.MaxBiasLevels)
+		}
+		if len(out.Rolled) != 12 || out.DiceTotal != 2 {
+			t.Errorf("Rolled = %v, DiceTotal = %d; want 12 dice read and the 9s past the cap ignored", out.Rolled, out.DiceTotal)
+		}
+		if short := calc.Derive(rules, attempts([]int{1, 1}, nil), service.RollInput{Condition: bias(-15)}); short.Short != 10 {
+			t.Errorf("Short = %d, want 10", short.Short)
+		}
+	})
+
+	t.Run("status bias and penalty add to the master's numbers", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{3, 4}, []int{9, 10}), service.RollInput{
+			SkillValue: 5,
+			Condition:  &action.RollCondition{Bias: 1, Modifier: 1},
+			Status:     service.StatusRoll{Bias: 1, Penalty: -2},
+		})
+		if out.Bias != 2 || out.Modifier != -1 {
+			t.Fatalf("Bias = %d, Modifier = %d; want 2 and -1", out.Bias, out.Modifier)
+		}
+		if out.Total != 23 { // 19 + 5 − 1
+			t.Errorf("Total = %d, want 23", out.Total)
+		}
+	})
+}
+
+func TestRollCalculator_Derive_CriticalRule(t *testing.T) {
+	calc := service.RollCalculator{}
+	rules := match.NewDefaultMatchRules()
+
+	t.Run("critical doubles total with modifiers", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{10, 10}, nil), service.RollInput{
+			SkillValue: 8, Condition: &action.RollCondition{Modifier: -3},
+		})
+		if !out.IsCritical || out.Total != 50 {
+			t.Fatalf("got critical %v total %d, want true and 50", out.IsCritical, out.Total)
+		}
+	})
+
+	t.Run("critical failure halves", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{1, 1}, nil), service.RollInput{SkillValue: 8})
+		if !out.IsCriticalFailure || out.Total != 5 {
+			t.Fatalf("got failure %v total %d, want true and 5", out.IsCriticalFailure, out.Total)
+		}
+	})
+
+	t.Run("critical read on kept dice only", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{1, 1}, []int{6}), service.RollInput{
+			SkillValue: 8, Condition: &action.RollCondition{Bias: 1},
+		})
+		if out.IsCriticalFailure || out.Total != 15 {
+			t.Fatalf("advantage dropped a 1: got failure %v total %d, want false and 15", out.IsCriticalFailure, out.Total)
+		}
+		out = calc.Derive(rules, attempts([]int{10, 10}, []int{3}), service.RollInput{
+			SkillValue: 8, Condition: &action.RollCondition{Bias: -1},
+		})
+		if out.IsCritical || out.Total != 21 {
+			t.Fatalf("disadvantage dropped a 10: got critical %v total %d, want false and 21", out.IsCritical, out.Total)
+		}
+	})
+
+	t.Run("passive base value never critical", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{10, 10}, []int{10}), service.RollInput{
+			SkillValue: 4, Passive: true, Condition: &action.RollCondition{Bias: -1},
+		})
+		if out.IsCritical || out.Total != 15 {
+			t.Fatalf("got critical %v total %d, want the base 11 + 4 = 15 with no critical", out.IsCritical, out.Total)
+		}
+		out = calc.Derive(rules, attempts([]int{10, 10}, nil), service.RollInput{SkillValue: 4, Passive: true})
+		if out.IsCritical || out.Total != 15 {
+			t.Fatalf("neutral passive: got critical %v total %d, want 15", out.IsCritical, out.Total)
+		}
+	})
+}
+
+func TestRollCalculator_Derive_StatusRoll(t *testing.T) {
+	calc := service.RollCalculator{}
+	rules := match.NewDefaultMatchRules()
+
+	t.Run("auto fail skips dice", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{10, 10}, []int{10}), service.RollInput{
+			SkillValue: 8,
+			Condition:  &action.RollCondition{Bias: 3, Modifier: 4},
+			Status:     service.StatusRoll{AutoFail: true},
+		})
+		if !out.AutoFailed || out.Total != 0 {
+			t.Fatalf("got AutoFailed %v total %d, want true and 0", out.AutoFailed, out.Total)
+		}
+		if len(out.Dice) != 0 || len(out.Rolled) != 0 || out.IsCritical || out.IsCriticalFailure || out.Short != 0 {
+			t.Errorf("an auto-fail reads no dice and asks for none, got %+v", out)
+		}
+	})
+
+	t.Run("rolled only rolls a passive", func(t *testing.T) {
+		out := calc.Derive(rules, attempts([]int{9, 9}, nil), service.RollInput{
+			SkillValue: 3, Passive: true, Status: service.StatusRoll{RolledOnly: true},
+		})
+		if out.Passive || out.DiceTotal != 18 || out.Total != 21 {
+			t.Fatalf("got passive %v dice %d total %d, want a rolled 18 + 3", out.Passive, out.DiceTotal, out.Total)
+		}
+		empty := calc.Derive(rules, action.RollAttempts{}, service.RollInput{
+			Passive: true, Status: service.StatusRoll{RolledOnly: true},
+		})
+		if empty.Short != 2 {
+			t.Errorf("Short = %d, want the whole set (2) on a passive that must roll", empty.Short)
+		}
+	})
+}
+
+func TestRollCalculator_TopUp(t *testing.T) {
+	calc := service.RollCalculator{}
+	rules := match.NewDefaultMatchRules()
+
+	t.Run("fills the primary set first, then the extras", func(t *testing.T) {
+		var a action.RollAttempts
+		calc.TopUp(rules, &a, 4, &scriptedSource{faces: []int{3, 4, 9, 10}})
+		if !slices.Equal(a.Primary, []int{3, 4}) || !slices.Equal(a.Extra, []int{9, 10}) {
+			t.Fatalf("got %+v, want Primary [3 4] and Extra [9 10]", a)
+		}
+	})
+
+	t.Run("appends only the missing extras", func(t *testing.T) {
+		a := attempts([]int{3, 4}, []int{9})
+		calc.TopUp(rules, &a, 2, &scriptedSource{faces: []int{5, 6}})
+		if !slices.Equal(a.Primary, []int{3, 4}) || !slices.Equal(a.Extra, []int{9, 5, 6}) {
+			t.Fatalf("got %+v, want the fallen dice kept and [5 6] appended", a)
+		}
+	})
+
+	t.Run("nothing needed rolls nothing", func(t *testing.T) {
+		src := &scriptedSource{faces: []int{5}}
+		a := attempts([]int{3, 4}, nil)
+		calc.TopUp(rules, &a, 0, src)
+		if len(a.Extra) != 0 || src.i != 0 {
+			t.Fatalf("got %+v after %d rolls, want nothing drawn", a, src.i)
+		}
+	})
+
+	t.Run("d20 set is one die", func(t *testing.T) {
+		d20 := match.NewDefaultMatchRules()
+		d20.DiceSet = match.DiceSetD20
+		var a action.RollAttempts
+		calc.TopUp(d20, &a, 3, &scriptedSource{faces: []int{7, 15, 3}})
+		if !slices.Equal(a.Primary, []int{7}) || !slices.Equal(a.Extra, []int{15, 3}) {
+			t.Fatalf("got %+v, want Primary [7] and Extra [15 3]", a)
 		}
 	})
 }
@@ -388,15 +641,15 @@ func TestRollCalculator_Derive_DiceDoesNotAliasAttempts(t *testing.T) {
 
 func TestDerive_ThreeBiasOrigins(t *testing.T) {
 	rules := match.NewDefaultMatchRules()
-	// Primary sums 6, Secondary sums 14. Advantage reads Secondary, disadvantage Primary.
-	attempts := action.RollAttempts{Primary: []int{4, 2}, Secondary: []int{9, 5}}
+	// Um nível lê [4 2 9]: a vantagem mantém 4+9 = 13, a desvantagem 4+2 = 6.
+	attempts := action.RollAttempts{Primary: []int{4, 2}, Extra: []int{9, 5}}
 
-	t.Run("the system's situational bias reads the worse set on its own", func(t *testing.T) {
+	t.Run("the system's situational bias reads the worst pair on its own", func(t *testing.T) {
 		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
 			SkillName: "Legerity", SkillValue: 3, SystemBias: -1, Dimension: match.DimActionSpeed,
 		})
 		if out.DiceTotal != 6 {
-			t.Errorf("DiceTotal = %d, want 6 — disadvantage reads Primary", out.DiceTotal)
+			t.Errorf("DiceTotal = %d, want 6 — disadvantage keeps the worst pair", out.DiceTotal)
 		}
 		if out.Bias != -1 {
 			t.Errorf("Bias = %d, want -1", out.Bias)
@@ -431,8 +684,8 @@ func TestDerive_ThreeBiasOrigins(t *testing.T) {
 		if out.Bias != 1 {
 			t.Errorf("Bias = %d, want 1 (master +1, system -1, ledger +1)", out.Bias)
 		}
-		if out.DiceTotal != 14 {
-			t.Errorf("DiceTotal = %d, want 14 — a net advantage reads Secondary", out.DiceTotal)
+		if out.DiceTotal != 13 {
+			t.Errorf("DiceTotal = %d, want 13 — a net advantage keeps the best pair of [4 2 9]", out.DiceTotal)
 		}
 	})
 

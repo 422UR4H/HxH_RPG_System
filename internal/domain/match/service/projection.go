@@ -100,6 +100,10 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 			}
 			continue
 		}
+		// A morte é segredo do mestre, aberto o turno ou não: a mesa a descobre pelo status dead.
+		if !v.IsMaster {
+			cr.Dies = false
+		}
 		if !v.SeesAllOf(cr.TargetID) {
 			public := publicKind(cr.ReactionKind)
 			// The DEMOTION is the discriminator, not the field. A payout is secret only when

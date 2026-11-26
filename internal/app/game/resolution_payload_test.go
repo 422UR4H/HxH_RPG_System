@@ -813,3 +813,31 @@ func TestResolutionUpdatedPayloadCarriesTheRegency(t *testing.T) {
 		t.Errorf("an empty resolution carries the keys anyway: %s", empty)
 	}
 }
+
+func TestResolutionPayload_CriticalDamageAndAutoFailed(t *testing.T) {
+	res := &service.TurnResolution{
+		ActionResult: service.RollResult{SkillName: "Accuracy", AutoFailed: true},
+		CharacterResults: []service.CharacterResult{{
+			TargetID: uuid.New(), EffectiveDamage: 20, CriticalDamage: true, Dies: true,
+		}},
+	}
+	p := newResolutionUpdatedPayload(uuid.New(), res)
+
+	t.Run("critical damage on the wire", func(t *testing.T) {
+		if !p.Targets[0].CriticalDamage || !p.Targets[0].Dies {
+			t.Fatalf("target = %+v, want criticalDamage and dies", p.Targets[0])
+		}
+		raw, _ := json.Marshal(newResolutionUpdatedPayload(uuid.New(), &service.TurnResolution{
+			CharacterResults: []service.CharacterResult{{}},
+		}))
+		if strings.Contains(string(raw), "criticalDamage") || strings.Contains(string(raw), "dies") ||
+			strings.Contains(string(raw), "autoFailed") {
+			t.Fatalf("false flags must be omitted: %s", raw)
+		}
+	})
+	t.Run("auto fail on the action roll", func(t *testing.T) {
+		if !p.Action.AutoFailed {
+			t.Fatalf("Action = %+v, want autoFailed", p.Action)
+		}
+	})
+}

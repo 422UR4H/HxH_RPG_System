@@ -97,7 +97,7 @@ func TestStatusEffectsUC(t *testing.T) {
 		if _, err := uc.Edit(f.s, f.master, f.p1, uuid.New(), statuseffect.Patch{}, now); !errors.Is(err, appmatch.ErrNotMatchMaster) {
 			t.Errorf("edit err = %v", err)
 		}
-		if _, err := uc.Remove(f.s, f.master, f.p1, uuid.New()); !errors.Is(err, appmatch.ErrNotMatchMaster) {
+		if _, err := uc.Remove(f.s, f.master, f.p1, uuid.New(), nil); !errors.Is(err, appmatch.ErrNotMatchMaster) {
 			t.Errorf("remove err = %v", err)
 		}
 	})
@@ -220,7 +220,7 @@ func TestStatusEffectsUC(t *testing.T) {
 		f := newSESession(t)
 		mustApply(t, uc, f, f.pc1, statuseffect.Draft{Kind: statuseffect.KindBleeding}, now)
 		e := f.s.StatusEffectsOf(f.pc1)[0]
-		ch, err := uc.Remove(f.s, f.master, f.master, e.ID)
+		ch, err := uc.Remove(f.s, f.master, f.master, e.ID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -237,7 +237,7 @@ func TestStatusEffectsUC(t *testing.T) {
 		if _, err := uc.Edit(f.s, f.master, f.master, uuid.New(), statuseffect.Patch{}, now); !errors.Is(err, statuseffect.ErrNotFound) {
 			t.Errorf("edit err = %v", err)
 		}
-		if _, err := uc.Remove(f.s, f.master, f.master, uuid.New()); !errors.Is(err, statuseffect.ErrNotFound) {
+		if _, err := uc.Remove(f.s, f.master, f.master, uuid.New(), nil); !errors.Is(err, statuseffect.ErrNotFound) {
 			t.Errorf("remove err = %v", err)
 		}
 	})
@@ -261,7 +261,7 @@ func TestStatusEffectsUC(t *testing.T) {
 		if err != nil || !ch.HiddenChanged {
 			t.Errorf("audience edit: changed=%v err=%v", ch.HiddenChanged, err)
 		}
-		ch, err = uc.Remove(f.s, f.master, f.master, e.ID)
+		ch, err = uc.Remove(f.s, f.master, f.master, e.ID, nil)
 		if err != nil || !ch.HiddenChanged {
 			t.Errorf("remove hidden: changed=%v err=%v", ch.HiddenChanged, err)
 		}
@@ -296,7 +296,7 @@ func TestStatusEffectsUC(t *testing.T) {
 			t.Fatal(err)
 		}
 		check("edit", ch.Writes, statuseffect.ChangeEdited, 1)
-		ch, err = uc.Remove(f.s, f.master, f.master, e.ID)
+		ch, err = uc.Remove(f.s, f.master, f.master, e.ID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

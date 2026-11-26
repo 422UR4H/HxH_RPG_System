@@ -533,14 +533,16 @@ type fakeStatusEffectStore struct {
 	writes   [][]statuseffect.Write
 	attempts int
 	// tried é cada chamada a Write, a que falhou inclusive, na ordem.
-	tried   [][]statuseffect.Write
+	tried [][]statuseffect.Write
+	// bars são as barras que cada Write que deu certo levou junto (paralelo a writes).
+	bars    [][]appmatch.SheetStatusBars
 	fail    error
 	effects map[uuid.UUID][]statuseffect.Effect
 	listErr error
 	lists   [][]uuid.UUID
 }
 
-func (s *fakeStatusEffectStore) Write(_ context.Context, ops []statuseffect.Write) error {
+func (s *fakeStatusEffectStore) Write(_ context.Context, ops []statuseffect.Write, bars []appmatch.SheetStatusBars) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.attempts++
@@ -549,7 +551,14 @@ func (s *fakeStatusEffectStore) Write(_ context.Context, ops []statuseffect.Writ
 		return s.fail
 	}
 	s.writes = append(s.writes, append([]statuseffect.Write(nil), ops...))
+	s.bars = append(s.bars, append([]appmatch.SheetStatusBars(nil), bars...))
 	return nil
+}
+
+func (s *fakeStatusEffectStore) barWrites() [][]appmatch.SheetStatusBars {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]appmatch.SheetStatusBars(nil), s.bars...)
 }
 
 func (s *fakeStatusEffectStore) ListBySheets(_ context.Context, ids []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error) {

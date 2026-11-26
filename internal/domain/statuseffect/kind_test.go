@@ -22,6 +22,7 @@ func TestKindLabel(t *testing.T) {
 		statuseffect.KindProne: "Caído", statuseffect.KindAirborne: "No ar",
 		statuseffect.KindOpenGuard: "Guarda aberta", statuseffect.KindCompelled: "Compelido",
 		statuseffect.KindControlled: "Controlado", statuseffect.KindHidden: "Escondido",
+		statuseffect.KindDead: "Morto",
 	}
 	for k, label := range want {
 		if _, err := statuseffect.ParseKind(string(k)); err != nil {

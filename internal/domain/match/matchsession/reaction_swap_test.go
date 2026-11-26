@@ -1,6 +1,7 @@
 package matchsession_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -95,8 +96,10 @@ func TestMatchSession_EscapeToTheQueuedDestinationIsNotASwap(t *testing.T) {
 // The master's Advantage on the movement of an escape that carries the system's Disadvantage:
 // the two cancel (bias -1 + 1 = 0) and the roll reads the PRIMARY set — neutral, not
 // "advantage". When the primary set was already the worse one, nothing moves.
+//
+// Dados roteirizados sem 1 nem 10: nenhum par mantido é crítico, então o total é a soma.
 func TestMatchSession_MasterAdvantageCancelsTheSwapDisadvantage(t *testing.T) {
-	s, playerB, b, actID := swapSetup(t, dashAction)
+	s, playerB, b, actID := swapSetupWithDice(t, dashAction, []int{4, 6, 2, 8, 3, 7, 5})
 	r := escapeTo(b, actID, 5, 5)
 	if _, err := s.AttachReaction(playerB, r); err != nil {
 		t.Fatalf("AttachReaction: %v", err)
@@ -106,9 +109,13 @@ func TestMatchSession_MasterAdvantageCancelsTheSwapDisadvantage(t *testing.T) {
 	}
 	att := r.Move.Speed.Attempts
 	skill := r.Move.Speed.SkillValue
-	worse := min(sum(att.Primary), sum(att.Secondary))
+	if len(att.Extra) != 1 {
+		t.Fatalf("Extra = %v, want exactly the one die the swap's level asks for", att.Extra)
+	}
+	pool := slices.Sorted(slices.Values(append(slices.Clone(att.Primary), att.Extra...)))
+	worse := pool[0] + pool[1]
 	if got := r.Move.Speed.Result; got != skill+worse {
-		t.Fatalf("with the swap Disadvantage: moveSpeed = %d, want skill %d + the worse set %d", got, skill, worse)
+		t.Fatalf("with the swap Disadvantage: moveSpeed = %d, want skill %d + the worst pair %d", got, skill, worse)
 	}
 
 	edit := action.NewMasterAction()

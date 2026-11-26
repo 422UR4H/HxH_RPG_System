@@ -74,8 +74,12 @@ func newTurnFixture(t *testing.T) *turnFixture {
 func (f *turnFixture) attachReaction(t *testing.T) {
 	t.Helper()
 	act := f.session.GetActiveRound().CurrentTurn().GetAction()
+	// Uma esquiva com o componente, como o mapper exige na produção: sem ele a resolução não
+	// tem onde pôr os dados que a esquiva rolada pede.
 	reaction := action.NewAction(f.victimChar, nil, act.GetID(), nil,
-		action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		action.ActionSpeed{}, nil, nil, nil, nil,
+		&action.Dodge{RollCheck: action.RollCheck{SkillName: enum.Reflex.String()}}, nil, nil)
+	reaction.ReactionKind = action.ReactDodge
 	if _, err := f.session.AttachReaction(f.victimPlayer, reaction); err != nil {
 		t.Fatalf("AttachReaction: %v", err)
 	}

@@ -51,10 +51,10 @@ func fixtureGoldenHistoryTurn() matchUC.HistoryTurn {
 	createdAt := time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
 	finishedAt := time.Date(2026, 9, 27, 10, 0, 30, 0, time.UTC)
 
-	rc := func(skill string, value int, primary, secondary []int, result int) action.RollCheck {
+	rc := func(skill string, value int, primary, extra []int, result int) action.RollCheck {
 		return action.RollCheck{
 			SkillName: skill, SkillValue: value,
-			Attempts: action.RollAttempts{Primary: primary, Secondary: secondary},
+			Attempts: action.RollAttempts{Primary: primary, Extra: extra},
 			Result:   result,
 		}
 	}

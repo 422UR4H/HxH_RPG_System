@@ -121,7 +121,7 @@ func TestResolveReaction(t *testing.T) {
 			avoided bool
 			payout  int
 		}{
-			{"cleared by a full step", []int{10, 10}, 10, service.RungGreatSuccess, true, 10},
+			{"cleared by a full step", []int{10, 9}, 9, service.RungGreatSuccess, true, 10},
 			{"cleared", []int{8, 6}, 12, service.RungSuccess, true, 0},
 			{"parried", []int{5, 3}, 12, service.RungNearMiss, true, -4},
 			{"missed by a full step", []int{1, 1}, 20, service.RungFailure, false, 0},
@@ -306,13 +306,13 @@ func TestResolveReaction_ReadsTheMastersCondition(t *testing.T) {
 		}
 	})
 
-	t.Run("dodge: advantage reads the secondary set that already fell", func(t *testing.T) {
+	t.Run("dodge: advantage reads the extra die that already fell", func(t *testing.T) {
 		r := reactionWith(action.ReactDodge, []int{2, 2}, nil, nil)
-		r.Dodge.Attempts.Secondary = []int{9, 9}
+		r.Dodge.Attempts.Extra = []int{9}
 		r.Dodge.Context.Condition = &action.RollCondition{Bias: 1}
 		out := service.ResolveReaction(reactionInput(t, action.ReactDodge, r, 30))
-		if out.Dodge.Total != 18 {
-			t.Fatalf("Dodge.Total = %d, want 18 (the better set)", out.Dodge.Total)
+		if out.Dodge.Total != 11 {
+			t.Fatalf("Dodge.Total = %d, want 11 (the best pair of [2 2 9])", out.Dodge.Total)
 		}
 	})
 

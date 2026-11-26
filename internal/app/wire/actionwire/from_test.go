@@ -55,6 +55,14 @@ func TestFromCutsByLevel(t *testing.T) {
 			t.Fatal("full must keep hit, speed and finalSpeed")
 		}
 	})
+	t.Run("skill entry result travels at full only", func(t *testing.T) {
+		if full.Skills[0].RollCheck.Result == nil {
+			t.Fatal("full must keep the skill entry's result")
+		}
+		if opened.Skills[0].RollCheck.Result != nil || decl.Skills[0].RollCheck.Result != nil {
+			t.Fatal("a skill entry's result is the master's secret while the turn is open")
+		}
+	})
 	t.Run("opened keeps the speeds and cuts the rest", func(t *testing.T) {
 		if opened.Speed.RollCheck.Result == nil || opened.Move.Speed.Result == nil || opened.Move.FinalSpeed == nil {
 			t.Fatal("opened must keep actionSpeed and moveSpeed")
@@ -127,4 +135,19 @@ func TestFromCarriesStackedOn(t *testing.T) {
 			t.Fatalf("stackedOn present on an unstacked move: %s", raw)
 		}
 	})
+}
+
+func TestFromCarriesTheExtraDice(t *testing.T) {
+	a := fixtureAction()
+	a.Attack.Hit.Attempts = action.RollAttempts{Primary: []int{3, 4}, Extra: []int{9}}
+	raw, err := json.Marshal(actionwire.From(a, actionwire.Full).Attack.Hit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"attempts":{"primary":[3,4],"extra":[9]}`) {
+		t.Fatalf("hit = %s, want attempts with primary and extra", raw)
+	}
+	if strings.Contains(string(raw), "secondary") {
+		t.Fatalf("hit = %s, the old secondary key must be gone", raw)
+	}
 }

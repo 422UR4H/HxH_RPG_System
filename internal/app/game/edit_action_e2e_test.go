@@ -53,9 +53,11 @@ func TestE2E_EditAction(t *testing.T) {
 			t.Fatal("the master never received a recomputed resolution_updated")
 		}
 
+		// A fixture tira toda face no topo: o acerto é crítico, e o crítico dobra todo número
+		// somado ao teste — o +5 vale 10 no total.
 		got := lastResolutionUpdated(t, masterMsgs).Action.Total
-		if want := baseline + 5; got != want {
-			t.Errorf("Total = %d, want %d (baseline %d + the +5 modifier)", got, want, baseline)
+		if want := baseline + 2*5; got != want {
+			t.Errorf("Total = %d, want %d (critical baseline %d + the +5 modifier, doubled)", got, want, baseline)
 		}
 	})
 }

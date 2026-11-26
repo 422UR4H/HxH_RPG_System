@@ -332,3 +332,34 @@ func TestProjectResolution_TheConditionsAreTheMasters(t *testing.T) {
 		t.Fatal("ProjectResolution mutated the master's copy")
 	}
 }
+
+func TestProjectResolution_DiesOnlyForTheMaster(t *testing.T) {
+	target := uuid.New()
+	for _, settled := range []bool{false, true} {
+		res := &service.TurnResolution{
+			IsSettled: settled,
+			CharacterResults: []service.CharacterResult{{
+				TargetID: target, EffectiveDamage: 30, CriticalDamage: true, Dies: true,
+			}},
+		}
+		master := service.ProjectResolution(res, service.Viewer{IsMaster: true})
+		if !master.CharacterResults[0].Dies {
+			t.Errorf("settled=%v: the master must see dies", settled)
+		}
+		for name, v := range map[string]service.Viewer{
+			"owner": {Owns: map[uuid.UUID]bool{target: true}},
+			"third": {},
+		} {
+			got := service.ProjectResolution(res, v)
+			if got.CharacterResults[0].Dies {
+				t.Errorf("settled=%v %s: dies leaked", settled, name)
+			}
+			if !got.CharacterResults[0].CriticalDamage {
+				t.Errorf("settled=%v %s: criticalDamage must travel like the damage", settled, name)
+			}
+		}
+		if !res.CharacterResults[0].Dies {
+			t.Errorf("settled=%v: projection mutated the master's resolution", settled)
+		}
+	}
+}

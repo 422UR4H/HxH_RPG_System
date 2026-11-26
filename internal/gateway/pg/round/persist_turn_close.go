@@ -184,7 +184,7 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	// canceladas: duram com o turno ou não duram (spec §10). O Write do pgstatuseffect, rodado
 	// nesta transação (vira savepoint), em ordem.
 	if len(d.StatusEffects) > 0 {
-		if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects); err != nil {
+		if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects, nil); err != nil {
 			return fmt.Errorf("PersistTurnClose status effects: %w", err)
 		}
 	}

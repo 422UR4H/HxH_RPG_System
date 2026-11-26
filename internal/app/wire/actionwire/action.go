@@ -108,11 +108,11 @@ type RollCheck struct {
 	Result     *int          `json:"result,omitempty"`
 }
 
-// RollAttempts is both dice sets a RollCheck rolled — see action.RollAttempts for why both
-// travel together.
+// RollAttempts são os dados que caíram para um RollCheck: o conjunto (primary) e os extras
+// de vantagem/desvantagem (extra), um por nível — ver action.RollAttempts.
 type RollAttempts struct {
-	Primary   []int `json:"primary,omitempty"`
-	Secondary []int `json:"secondary,omitempty"`
+	Primary []int `json:"primary,omitempty"`
+	Extra   []int `json:"extra,omitempty"`
 }
 
 // Trigger is presence-only: the domain Trigger carries no fields yet (see action.Trigger's

@@ -62,7 +62,7 @@ automática **não entra** — você toma o dano cheio. A única forma de escapa
 ### Se você já tinha declarado uma ação
 
 Reagir ativamente **consome a ação que você tinha na fila**. E, assim como trocar de ação,
-isso custa **Desvantagem**: o sistema rola de novo e fica com o pior dos dois resultados.
+isso custa **Desvantagem**: o teste ganha um dado a mais e valem os piores dados.
 
 Se você **não** tinha ação declarada, a reação simplesmente vira a sua ação. Sem penalidade.
 
@@ -88,6 +88,40 @@ round seguinte mais atrasado. O sistema cobra depois; ele não te impede de se d
 
 O mestre pode perdoar esse custo. Se sua reação foi criativa a ponto de abrir espaço para a
 sua própria ação, ele pode deixar você agir mesmo assim — e até adiantar sua ação na fila.
+
+## Do que cada ação é feita
+
+Toda ação de combate é feita de uma ou mais destas quatro coisas: **ataque**, **defesa**,
+**esquiva** e **movimento**. É isso que decide o que pesa nela: um ferimento que pesa no
+ataque pesa em tudo que é ataque; ficar sem poder se mover impede tudo que é movimento.
+
+| Ação | É feita de |
+|------|-----------|
+| Atacar, fintar | ataque |
+| Defender (a defesa automática) | defesa |
+| Esquivar (a esquiva automática), esquiva fechada, Evasão | esquiva |
+| **Repelir** | **ataque e defesa** |
+| Escapar, rolamento *(ainda por vir)* | movimento e esquiva |
+| Escape fechado | movimento e esquiva, mais a Evasão |
+| Escape defensivo | movimento e esquiva, mais a defesa automática que ele mantém como rede |
+| Investir, arremeter *(ainda por vir)* | movimento e ataque |
+| Esquiva defensiva *(ainda por vir)* | esquiva e defesa |
+
+**Por que o repelir é ataque e defesa.** Por dois motivos juntos: repelir é **atacar o
+ataque** — você acerta o golpe do oponente —, e o golpe que você ia dar contra quem te ataca
+pode **virar o repelir** sem penalidade ([Se você já tinha declarado uma
+ação](#se-você-já-tinha-declarado-uma-ação)). Mesmo assim, o repelir é **um teste só**: ele recebe
+o que pesa no ataque e o que pesa na defesa, e não pode ser usado se você não pode atacar ou não
+pode defender.
+
+As reações automáticas **não** se misturam: a esquiva automática é só esquiva, e a defesa
+automática é só defesa — cada uma com o seu teste. A esquiva defensiva, que junta as duas, é
+outra ação. Já o escape faz **dois testes**, um de esquiva e um de movimento, e o que pesa só na
+esquiva não pesa no teste de movimento, e vice-versa.
+
+**Um mesmo problema pesa uma vez só num teste**, mesmo que alcance mais de uma coisa que o
+teste é: com a visão anulada, o repelir (ataque e defesa) sofre **uma** desvantagem, não duas.
+Problemas diferentes somam: visão anulada e um ferimento no ataque dão duas.
 
 ## Repelir
 

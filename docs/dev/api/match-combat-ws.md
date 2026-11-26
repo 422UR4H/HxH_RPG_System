@@ -756,7 +756,7 @@ independente — mande só o que muda.
 | `actionId` | Ausente ou zero = **a ação própria do turno**. Senão, o ID de uma reação anexada ou de uma ação na fila (`action_queued.actionId`). |
 | `conditions[].field` | `speed` · `hit` · `damage` · `dodge` · `defense` · `repel` · `feint` · `moveSpeed`. |
 | `conditions[].skillName` | **Alternativa** a `field`, nomeando uma entrada de `skills`. Mandar os dois é erro. |
-| `bias` | Vantagem/desvantagem nos dados (−1 / 0 / +1). **Não** é somado ao total: escolhe qual conjunto de dados é lido. **Recusado no dano** (`field: "damage"`): o dano rola um conjunto só de dados, não há o que escolher — `game_error` `O dano não aceita vantagem nem desvantagem.`. O `modifier` no dano soma ao dano bruto (piso zero) e vale para toda a cadeia de alvos. |
+| `bias` | **Níveis** de vantagem (positivo) ou desvantagem (negativo) nos dados, inteiro; teto técnico de 10 níveis por teste (acima disso lê como 10). Cada nível acrescenta **um dado**; **não** é somado ao total — ver [O teste de dados](#o-teste-de-dados-vantagem-desvantagem-e-crítico). O que vale é o viés **líquido**: o do mestre, o do sistema (troca de reação), o do ledger e o dos efeitos de status somam e se cancelam nível a nível. **Recusado no dano** (`field: "damage"`): o dano rola um conjunto só de dados, não há o que escolher — `game_error` `O dano não aceita vantagem nem desvantagem.`. O `modifier` no dano soma ao dano bruto (piso zero) e vale para toda a cadeia de alvos. |
 | `modifier` | Ajuste plano no total. |
 | `damageSkill` | A perícia que mede o dano do ataque da ação (padrão **`Push`**). Qualquer perícia válida do enum (perícia desconhecida → `invalid_action`), ou **`"None"`**: nenhuma perícia soma no dano — só os dados e o bônus fixo da arma (uma arma de fogo, por exemplo). Ausente = não mexe; `"Push"` devolve ao padrão e apaga a captura. Só numa ação com ataque — senão `game_error` `Essa ação não tem ataque, então não há dano para medir.`. O original vai para `overridden_action_values` com origem `system`. Exemplo: `{ "type": "edit_action", "payload": { "damageSkill": "Grab" } }`. |
 | `escapeLanding.position` | Onde a peça de uma **fuga que falhar** vai parar — ver abaixo. `null` limpa. |
@@ -782,17 +782,17 @@ independente — mande só o que muda.
 >
 > Tudo é aceito e guardado — a regra pode crescer; a tela é que esconde o que não muda nada.
 >
-> **Viés numa leitura passiva a torna rolada** (2026-10-12). Uma leitura passiva usa o valor base
-> do conjunto de dados (11 no 2D10). Quando o **mestre** põe vantagem ou desvantagem nela, ela
-> passa a ser rolada, com o valor base como o outro conjunto: **vantagem fica com o melhor entre o
-> dado e o valor base; desvantagem, com o pior**. O dado cai **na primeira vez** que um viés o
-> pede — um conjunto, o primário — e nunca mais: tirar e repor o viés lê o mesmo dado. Vale para
-> toda leitura passiva: a esquiva e a defesa da reação `default`, a defesa padrão atrás das
-> outras, o `moveSpeed` do `closedEscape` (Shift) e a `speed` fora do Race. **O viés do sistema
-> (a Desvantagem da troca) vale do mesmo jeito** (2026-10-13): numa leitura passiva ele a faz rolar
-> contra o valor base, e o dado cai quando as velocidades são derivadas. Os dois se somam como
-> numa rolada — a Vantagem do mestre sobre a Desvantagem do sistema volta ao valor base. Na
-> resolução, a leitura segue `passive`, e `dice` traz o dado que caiu.
+> **Viés numa leitura passiva a torna rolada.** Uma leitura passiva usa o valor base do conjunto
+> de dados (11 no 2D10). Quando o viés **líquido** não é zero — o do mestre, o do sistema, o do
+> ledger ou o de um efeito de status —, ela passa a ser rolada: cai o conjunto **mais um dado por
+> nível**, o par mantido (vantagem: os 2 melhores; desvantagem: os 2 piores) é comparado com o valor
+> base, e a vantagem fica com o **melhor dos dois**, a desvantagem com o **pior** (empate fica com a
+> base). Os dados caem **na primeira vez** que um viés os pede e nunca mais: tirar e repor o viés lê
+> os mesmos dados; um viés que cresce tira só os que faltam. Na resolução, a leitura segue
+> `passive`, e `dice` traz os dados que caíram. Vale para toda leitura passiva: a esquiva e a
+> defesa da reação `default`, a defesa padrão atrás das outras, o `moveSpeed` do `closedEscape`
+> (Shift) e a `speed` fora do Race. Um efeito que deixa a defesa padrão **só rolada** (Guarda
+> aberta) a faz rolar mesmo sem viés.
 
 **`escapeLanding` — a queda da fuga que falha é do mestre.** O motor não tem regra para onde
 uma fuga que falhou vai parar (ver [`open_reaction`](#open_reaction)); o mestre decide, por esta
@@ -824,8 +824,11 @@ mesma superfície de edição. `actionId` nomeia a **reação de fuga**:
 - Volta [`action_edited`](#action_edited) e o [`resolution_updated`](#resolution_updated)
   recomputado, com `targets[].escape.landing` preenchido (e `awaitsMaster: false`).
 
-A edição **não re-rola nada**. Os dados já caíram; `bias` só troca qual conjunto é lido — a
-única exceção é a primeira vez que um viés pede o dado de uma leitura passiva, acima.
+A edição **não re-rola nada**. Os dados já caíram; `bias` só muda **quantos** deles o teste lê — a
+única exceção é um viés que cresce e pede dados que ainda não caíram (a primeira vez numa leitura
+passiva, ou um nível a mais): só os que faltam são tirados, uma vez, e ficam. Quem tira os dados é
+sempre o servidor, **dentro do comando que mudou o viés** (a edição, a abertura do turno, a mudança de
+efeito de status), nunca numa leitura.
 
 **Editar uma ação na fila.** Com `actionId` de uma ação que está na fila (com ou sem turno
 aberto), a edição pousa nela e vai junto quando ela abrir: as capturas ficam guardadas até o
@@ -859,6 +862,42 @@ deixa `targetIds` ou `skills` já alterados.
 `Esse pouso fica fora do mapa.`, `O dano não aceita vantagem nem desvantagem.`,
 `Essa ação não tem ataque, então não há dano para medir.`,
 `Uma ação na fila só aceita mudar as condições e a perícia de dano.`).
+
+### O teste de dados: vantagem, desvantagem e crítico
+
+Regras da fase 2 (spec §16.4 itens 28–32). O servidor lê tudo isto; o front só mostra os números.
+
+**Dados.** O conjunto da partida (2D10 ou D20) cai **uma vez**, quando a ação ou a reação
+chega. Cada **nível** de vantagem ou desvantagem acrescenta **um dado extra** do mesmo tipo
+(`attempts.extra`, na ordem em que caíram). O resultado **mantém** o tamanho do conjunto: com
+vantagem, os maiores do monte; com desvantagem, os menores (no D20, um dado). Os níveis de todas as
+origens somam e **se cancelam um a um**. Os números **somam**: a penalidade de um efeito e o
+`modifier` do mestre vão ao total, não aos dados. Um teste **passivo** com N níveis rola 2+N dados
+(no 2D10) e compara o par mantido com o valor base. O teto é de 10 níveis por teste.
+
+**Forma no fio** (`rollCheck`, em `action_queued`, `turn_opened`, `reaction_opened`, `match_full_state`):
+
+```json
+{ "skillName": "Accuracy", "skillValue": 14, "attempts": { "primary": [6, 8], "extra": [9] }, "result": 23 }
+```
+
+| Campo | O que é |
+|---|---|
+| `attempts.primary` | o conjunto, rolado uma vez. |
+| `attempts.extra` | os extras de vantagem/desvantagem (**substitui o antigo `secondary`**, que não existe mais; linhas gravadas antes leem sem extras). Ausente = nenhum caiu. Pode ter **mais** dados do que o viés atual lê: um viés que baixa só deixa de ler os últimos. |
+| `result` | o total derivado: dados mantidos + `skillValue` + modificadores, **já com o crítico**. Presente nas velocidades **e agora também em `skills[].rollCheck`** (com condição do mestre e efeitos de status, no chegar e a cada edição/mudança de status). Nada lê o `skills[].result` para decidir desfecho ainda. Segue o corte de números do nível (`Full` apenas): o jogador não o vê enquanto o turno está aberto, como os demais números. |
+
+**Crítico.** Lido **nos dados mantidos** (todos na face máxima = crítico; todos em 1 = falha
+crítica), em **qualquer** teste que rola dados (não nos passivos que ficaram na base). O total vira
+`(dados + valor do teste + todo número somado) × 2` no crítico e esse mesmo valor `÷ 2` (piso
+verdadeiro, inclusive nos negativos) na falha crítica. `isCritical`/`isCriticalFailure` e o `total`
+já vêm com a regra aplicada: **não reaplique**. Um acerto **crítico** dobra também o **dano final**
+de cada alvo (depois de toda redução; zero continua zero) e o dano a uma parede
+([`criticalDamage`](#resolution_updated), `walls[].effectiveDamage`).
+
+**Falha automática.** Um efeito de status (sentido anulado, Atordoado, Inconsciente, Morto)
+faz o teste falhar **sem rolar**: `total` 0, sem dados, sem crítico, `autoFailed: true`
+([`resolution_updated`](#resolution_updated) `action.autoFailed`).
 
 ### `close_turn`
 
@@ -1999,11 +2038,15 @@ junto é de turno aberto.
 |---|---|
 | `isSettled` | `false` = turno aberto, cálculo provisório, **master-only**. `true` = turno fechado, é **este** o cálculo cujo dano foi aplicado. |
 | `action` | O teste de acerto do atacante — **um golpe só**, compartilhado por toda a cadeia. `margin` só existe quando há CD única, isto é, **num ataque de alvo único**; num ataque multi-alvo o campo é **omitido**. **Também é omitido** para o destinatário que não percebe algum alvo Escondido do ataque (D2): como `total - margin` é a esquiva do alvo único, a margem entregaria o Escondido — inclusive o que esquivou, que não pode deixar rastro — e diria que havia um só alvo. O mestre e quem percebe o alvo mantêm a margem; o `total` segue público. |
-| `action.diceRolled` | Os dados **efetivamente lidos**. Um teste enviesado rolou dois conjuntos; só o lido viaja. |
+| `action.diceRolled` | Os dados **mantidos** pelo teste (o conjunto: 2 no 2D10, 1 no D20), depois de vantagem/desvantagem. Os extras que caíram e não foram mantidos não viajam aqui — só em `attempts.extra` da ação. |
+| `action.isCritical` / `isCriticalFailure` | O crítico lido nos dados mantidos ([O teste de dados](#o-teste-de-dados-vantagem-desvantagem-e-crítico)); o `total` já vem dobrado ou pela metade. |
+| `action.autoFailed` | `true` quando um efeito de status fez o acerto falhar **sem rolar** (`total` 0, `diceRolled` vazio, sem crítico). **Ausente** quando `false`. Só o teste de acerto leva o campo no fio; a reação traz apenas `total`. |
 | `targets` | **Na ordem da cadeia**: primeiro os alvos cuja reação foi aberta, na ordem em que o mestre as abriu; depois os demais alvos — com a reação anexada a eles, não aberta (a padrão sentada inclusive) —, na ordem de `action.targetId`. Vale para o payload aberto, o liquidado projetado, o `match_full_state.resolution` e o histórico. É assim que a ordem de abertura — que muda o desfecho — sobrevive à reconexão. Só personagens: parede não entra em `targets`. |
 | `targets[].avoided` | O golpe **não acertou este alvo, por qualquer meio**: esquiva, fuga, aparo, ou um aparo anterior que parou a corrente. **Não** é "esquivou" — pergunte a `reaction.kind` se a distinção importa. |
 | `targets[].attackStopped` | `true` quando um aparo **anterior** na corrente já tinha parado o golpe ao chegar a este alvo (`avoided` vem `true` junto). Distingue "esquivou" de "o golpe já tinha parado" quando `reaction.kind` é `nothing`. **Ausente** quando `false`. |
-| `targets[].projectedDamage` | **Projeção.** O HP só muda no fechamento do turno. |
+| `targets[].projectedDamage` | **Projeção.** O HP só muda no fechamento do turno. É o dano **final** deste alvo: num acerto crítico, já dobrado. |
+| `targets[].criticalDamage` | `true` quando o acerto crítico **dobrou** o dano final deste alvo (só se havia dano: 0 continua 0 e o campo fica ausente). Cada alvo dobra o que ele mesmo toma; o resíduo que segue na cadeia não é dobrado. Segue a visibilidade do `projectedDamage` (é um fato sobre o dano). **Ausente** quando `false`. |
+| `targets[].dies` | **Só o mestre.** `true` quando, aplicado este dano, o HP do alvo ficaria **abaixo do mínimo** da barra (e ele ainda não está Morto). É **prévia**, por alvo e **não cumulativa** entre os turnos (cada resultado olha o HP atual da ficha); nada é aplicado antes do fechamento. Zerado para todo leitor que não é o mestre, com o turno aberto **ou** liquidado: a mesa sabe da morte pelo status `dead`, através da névoa ([`match-status-effects.md`](match-status-effects.md#morto-dead)). Muda quando o HP muda (inclusive a volta do Morto). **Ausente** quando `false`. |
 | `targets[].reaction` | A reação **deste alvo, aberta ou não** — a `default` que o servidor sentou para quem não respondeu inclusive (2026-10-12). **Ausente** só quando o turno não tem reação nenhuma para o alvo (o servidor senta uma para todo personagem que o ataque nomeia, então isso não acontece ao vivo; resoluções gravadas antes de 2026-10-12 não têm a chave para as passivas) — `omitempty` **omite a chave**, não emite `null`; em TypeScript, `reaction?: ReactionResultPayload`. |
 | `reaction.opened` | `true` quando o mestre deu a palavra a ela. Uma não aberta entra no cálculo do mesmo jeito, depois de todas as abertas. |
 | `reaction.rung` | `great_success` · `success` · `near_miss` · `failure` — **snake_case**, diferente de todo o resto do wire. Ausente fora de um aparo. |
@@ -2013,7 +2056,7 @@ junto é de turno aberto.
 | `escape.landing` | Onde o mestre pôs a peça ([`edit_action`](#edit_action) `escapeLanding`), `[col, row, z]` — **presente só enquanto a fuga falha** e há escolha. Uma fuga que escapa não o mostra, mesmo com escolha guardada: vai ao destino. **No payload liquidado, sujeito à fog** — ausente para quem não é mestre nem dono do personagem e não enxerga a casa onde a peça caiu (ver §6, item 5). |
 | `targets[].payouts` | O que a reação **deste alvo rendeu**: o bônus ou a penalidade do aparar, a reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria. **Sujeito à projeção** — ver §6. |
 | `reaction.stopsAttack` | É a contribuição **deste** aparo, não se alguém antes na corrente já parou o ataque. |
-| `reaction.systemBias` | A **Desvantagem que o próprio motor** pôs nas velocidades da reação (`actionSpeed` e, se ela move, `moveSpeed`): `-1` quando ela consumiu uma ação da fila (menos a fuga para o mesmo destino do movimento consumido) ou quem reage cancelou antes nesta rodada (ver [`attach_reaction`](#attach_reaction)). **Ausente** = nenhuma. Acumula com o viés que o mestre der no `edit_action`: um `+1` do mestre a **anula** (neutro — lê o primeiro conjunto de dados, não o melhor); o viés só decide o sinal, então não há como ir além de neutro com viés — vantagem líquida é o `modifier`. O mesmo valor de `systemBias` da ação ([`reaction_opened`](#reaction_opened)), aqui para o painel não precisar cruzar mensagens. |
+| `reaction.systemBias` | A **Desvantagem que o próprio motor** pôs nas velocidades da reação (`actionSpeed` e, se ela move, `moveSpeed`): `-1` quando ela consumiu uma ação da fila (menos a fuga para o mesmo destino do movimento consumido) ou quem reage cancelou antes nesta rodada (ver [`attach_reaction`](#attach_reaction)). **Ausente** = nenhuma. Acumula com o viés que o mestre der no `edit_action` e com o dos efeitos de status: os níveis **somam e se cancelam** (um `+1` do mestre anula o `-1` do sistema; `+2` deixa uma vantagem líquida de 1 nível). O mesmo valor de `systemBias` da ação ([`reaction_opened`](#reaction_opened)), aqui para o painel não precisar cruzar mensagens. |
 | `pendingReactions` | Reações **anexadas e ainda não abertas** — a padrão sentada e o `nothing` inclusive. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre (de quem ainda pode ganhar a palavra), não estado de mesa. A reação não aberta **está** no cálculo (em `targets[].reaction`, com `opened: false`); esta lista é o que deixa o mestre escolher a ordem. |
 | `pendingReactions[].seated` | `true` na reação padrão que o servidor sentou para um alvo que ainda não respondeu — "ainda calado" × "escolheu a padrão". Ausente quando o alvo respondeu. |
 | `pendingReactions[].kind` | O tipo da reação. **Com efeitos de status, a sentada segue os status do alvo:** `"default"` (inteira, ou só com as passivas que os status permitem) ou **`"nothing"` com `seated: true`** quando o alvo não pode reagir ou perdeu as duas passivas (esquiva por reflexo e defesa padrão). O front não pode assumir que `seated` implica `default`. |
@@ -2029,7 +2072,9 @@ junto é de turno aberto.
 **`walls[]`** — `{ wallId, kind, effectiveDamage, hp, maxHp, destroyed, open, failure? }`:
 
 - `kind: "attack"`: `effectiveDamage` é o dano depois da resistência (zero numa parede
-  indestrutível, `maxHp: 0`); `hp` e `destroyed` são a parede **como o fechamento a deixará**.
+  indestrutível, `maxHp: 0`) **e, num acerto crítico, dobrado** (o rebote não muda). O acerto contra
+  uma parede é derivado (e, se o viés o pede, tira os dados que faltam) como o de um personagem —
+  com os efeitos de status do atacante e o crítico; `hp` e `destroyed` são a parede **como o fechamento a deixará**.
   **O golpe numa parede cai no fechamento do turno**, junto com o dano nos personagens — por isso
   as edições do mestre no dano (modificador, `damageSkill`) valem para a parede, e o
   `wall_hp_changed` sai no fechamento (antes: na abertura).
@@ -2170,7 +2215,7 @@ ficha** que mudou, e mais ninguém.
     "characterId": "22222222-2222-4222-8222-222222222222",
     "hp": 84,
     "maxHp": 100,
-    "damage": 16
+    "hpChange": -16
   }
 }
 ```
@@ -2178,9 +2223,9 @@ ficha** que mudou, e mais ninguém.
 | Campo | O que é |
 |---|---|
 | `characterId` | UUID da ficha — o mesmo ID que a peça do tabuleiro e `bars_updated.characters[].characterId` carregam. |
-| `hp` | O valor que a ficha tem **agora**, já aplicado — e já persistido, na transação do turno que o aplicou (se ela falhar, a mensagem sai igual: o dano vale na mesa, mas não sobrevive a um reinício; ver [§9](#reinício-recarga-queda)). |
+| `hp` | O valor que a ficha tem **agora** (**pode ser negativo**: a barra de vida desce até o mínimo da ficha, e um golpe grande deixa o valor exato, −40 continua −40), já aplicado — e já persistido, na transação do turno que o aplicou (se ela falhar, a mensagem sai igual: o dano vale na mesa, mas não sobrevive a um reinício; ver [§9](#reinício-recarga-queda)). |
 | `maxHp` | O máximo da mesma barra de vida, para o cliente desenhar a barra sem um round trip REST. |
-| `damage` | O quanto acabou de sair. É o que deixa uma linha de histórico dizer "−16" sem diffar dois snapshots. |
+| `hpChange` | A variação do HP, com o **sinal natural**: `hp − hp de antes`. **Negativo = perdeu** (o exemplo acima: `-16`), **positivo = ganhou** — a volta do Morto de −40 para 5 sai `+45`. É o que deixa uma linha de histórico dizer "−16" ou "+45" sem diffar dois snapshots. |
 
 **É o número APLICADO, não a projeção.** `resolution_updated` carrega o ensaio
 (`projectedDamage`) enquanto o turno está aberto; só o fechamento escreve na ficha. Quem
@@ -2190,7 +2235,8 @@ desenha a barra de vida escuta esta mensagem, não aquela.
 por **cura** e por **veneno**, e nenhum desses caminhos resolve turno nenhum. Um campo na
 resolução teria que ser duplicado no instante em que o primeiro deles chegasse. O que esta
 mensagem diz é "a barra mexeu", não "um turno calculou alguma coisa" — quando a cura e o
-veneno existirem, eles emitem **esta** mensagem, com o mesmo formato.
+veneno existirem, eles emitem **esta** mensagem, com o mesmo formato e o mesmo campo `hpChange`
+(positivo na cura, negativo no veneno).
 
 **Por que projetado:** o HP exato de terceiro não é estado de mesa. A mesa fica sabendo que
 alguém se machucou pela narração e pelo `resolution_updated` liquidado (que já é projetado,
@@ -2208,7 +2254,15 @@ só o(s) dele(s).
 **Disparado por:** [`close_turn`](#close_turn), [`open_next_action`](#open_next_action) e
 [`pull_action`](#pull_action) — os **três** verbos que fecham um turno, exatamente como
 [`turn_closed`](#turn_closed). Sai **depois** da persistência (ninguém recebe um número que o
-banco ainda não tem) e **antes** do `turn_closed` do mesmo fechamento.
+banco ainda não tem) e **antes** do `turn_closed` do mesmo fechamento. Quando o dano mata, a ordem é
+`character_hp_changed` → `action_cancelled` (as ações da fila que o Morto tirou) →
+`status_effects_updated` (o `dead`) → `turn_closed`.
+
+**Também sai de [`remove_status_effect`](match-status-effects.md#desfazer-a-morte-remove_status_effect-com-hp)
+do `dead`** com o HP com que o personagem volta (só quando o HP mudou), ao mestre e ao dono, depois de
+tentar gravar. Fora de turno a gravação é a **mesma transação** da remoção; dentro de um turno, vai
+com o fechamento. A mesma regra vale para uma ficha cujo fechamento anterior **falhou** ao gravar: a
+próxima gravação fora de turno (inclusive uma mudança de status) a leva junto.
 
 > ⚠️ **Não sai quando o dano é zero.** Só o que foi de fato escrito na ficha vira mensagem:
 > um ataque esquivado, ou aparado até sobrar nada, fecha o turno sem nenhum

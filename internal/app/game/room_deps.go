@@ -32,7 +32,9 @@ type ICancelledActionRepo interface {
 // pgstatuseffect.Repository.
 type IStatusEffectRepo interface {
 	ListBySheets(ctx context.Context, sheetUUIDs []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error)
-	Write(ctx context.Context, ops []statuseffect.Write) error
+	// Write grava as operações e as barras (bars) numa transação só; bars são as fichas cujo HP
+	// a mudança de status moveu (a volta do Morto) ou que uma gravação anterior não gravou.
+	Write(ctx context.Context, ops []statuseffect.Write, bars []appmatch.SheetStatusBars) error
 }
 
 // RoomDeps is everything a Room needs from the outside, in one place.

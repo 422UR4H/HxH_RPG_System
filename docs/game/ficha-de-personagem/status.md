@@ -16,6 +16,12 @@ As barras de status são os recursos vitais do personagem: Vida (HP), Energia/St
 
 Quando o personagem está com vida cheia, uma evolução mantém a vida no máximo novo.
 
+**A Vida pode ficar negativa.** O personagem não morre ao chegar a zero: a Vida desce até um limite abaixo de zero, que é próprio de cada personagem:
+
+> **Limite negativo** = 10 + nível da Vitalidade + valor da Resistência + bônus da Aptidão Física (arredondado para baixo)
+
+Quem termina um golpe com a Vida **abaixo** desse limite **morre**: recebe o estado **Morto** (que inclui o Inconsciente) no fim do turno. A Vida fica no valor exato a que o golpe chegou. O mestre pode desfazer a morte e devolver o personagem com a Vida que escolher (padrão: o limite negativo, se estava abaixo dele).
+
 ## Stamina — SP (Stamina Points)
 
 **Fórmula:**
@@ -43,7 +49,7 @@ A conta entre colchetes é arredondada para baixo antes de multiplicar por 10. P
 ## Mecânica das Barras
 
 Cada barra possui três valores:
-- **Mínimo:** limite inferior (geralmente 0)
+- **Mínimo:** limite inferior (0 para Stamina e Aura; a Vida tem um limite negativo, descrito acima)
 - **Atual:** valor corrente
 - **Máximo:** limite superior calculado
 

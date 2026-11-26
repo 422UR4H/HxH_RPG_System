@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
@@ -55,7 +57,7 @@ func TestWrite(t *testing.T) {
 			Audience:  &statuseffect.Audience{Everyone: true},
 			AppliedAt: at, UpdatedAt: at,
 		}
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e}}, nil); err != nil {
 			t.Fatalf("insert: %v", err)
 		}
 		edited := e
@@ -64,7 +66,7 @@ func TestWrite(t *testing.T) {
 		edited.Audience = nil
 		edited.AppliedAt = at.Add(time.Hour) // imutável: deve ser ignorado
 		edited.UpdatedAt = at.Add(2 * time.Hour)
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: edited}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: edited}}, nil); err != nil {
 			t.Fatalf("update: %v", err)
 		}
 		got, err := repo.ListBySheets(ctx, []uuid.UUID{sheet})
@@ -81,14 +83,14 @@ func TestWrite(t *testing.T) {
 	t.Run("delete removes and is idempotent", func(t *testing.T) {
 		sheet := setup(t)
 		e := prone(sheet, now())
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e}}, nil); err != nil {
 			t.Fatalf("insert: %v", err)
 		}
 		del := []statuseffect.Write{{Delete: true, Effect: statuseffect.Effect{ID: e.ID}}}
-		if err := repo.Write(ctx, del); err != nil {
+		if err := repo.Write(ctx, del, nil); err != nil {
 			t.Fatalf("delete: %v", err)
 		}
-		if err := repo.Write(ctx, del); err != nil {
+		if err := repo.Write(ctx, del, nil); err != nil {
 			t.Fatalf("second delete: %v", err)
 		}
 		if n := total(t); n != 0 {
@@ -104,7 +106,7 @@ func TestWrite(t *testing.T) {
 			{Effect: a},
 			{Delete: true, Effect: statuseffect.Effect{ID: a.ID}},
 			{Effect: b},
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("write: %v", err)
 		}
@@ -117,11 +119,11 @@ func TestWrite(t *testing.T) {
 	t.Run("same identity with another uuid replaces the row", func(t *testing.T) {
 		sheet := setup(t)
 		old := prone(sheet, now())
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: old}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: old}}, nil); err != nil {
 			t.Fatalf("first write: %v", err)
 		}
 		fresh := prone(sheet, now().Add(time.Minute))
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: fresh}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: fresh}}, nil); err != nil {
 			t.Fatalf("second write: %v", err)
 		}
 		got, _ := repo.ListBySheets(ctx, []uuid.UUID{sheet})
@@ -137,7 +139,7 @@ func TestWrite(t *testing.T) {
 		err := repo.Write(ctx, []statuseffect.Write{
 			{Effect: prone(uuid.New(), now())}, // ficha apagada
 			{Effect: prone(alive, now())},
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("write: %v", err)
 		}
@@ -152,12 +154,66 @@ func TestWrite(t *testing.T) {
 			{Effect: prone(sheet, now())},
 			{Effect: statuseffect.Effect{ID: uuid.New(), CharacterID: sheet,
 				Kind: statuseffect.Kind(strings.Repeat("x", 40)), AppliedAt: now(), UpdatedAt: now()}}, // kind > VARCHAR(32)
-		})
+		}, nil)
 		if err == nil {
 			t.Fatal("expected an error")
 		}
 		if n := total(t); n != 0 {
 			t.Fatalf("rows = %d, want 0", n)
+		}
+	})
+
+	t.Run("write carries bars in the same transaction", func(t *testing.T) {
+		sheet := setup(t)
+		hp := func(t *testing.T) (min, curr, max int) {
+			t.Helper()
+			if err := pool.QueryRow(ctx,
+				`SELECT health_min_pts, health_curr_pts, health_max_pts FROM character_sheets WHERE uuid = $1`,
+				sheet).Scan(&min, &curr, &max); err != nil {
+				t.Fatalf("read hp: %v", err)
+			}
+			return min, curr, max
+		}
+		bars := func(curr int) []appmatch.SheetStatusBars {
+			return []appmatch.SheetStatusBars{{
+				CharacterID: sheet,
+				Health:      status.ReconstructBar(-16, curr, 40),
+				Stamina:     status.ReconstructBar(0, 10, 10),
+				Aura:        status.ReconstructBar(0, 5, 5),
+			}}
+		}
+
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: prone(sheet, now())}}, bars(-16)); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if n := total(t); n != 1 {
+			t.Fatalf("rows = %d, want 1", n)
+		}
+		if lo, cur, hi := hp(t); lo != -16 || cur != -16 || hi != 40 {
+			t.Fatalf("hp = %d/%d/%d, want -16/-16/40", lo, cur, hi)
+		}
+
+		// Uma barra que o banco recusa (fora de INT) desfaz também o efeito: uma transação só.
+		err := repo.Write(ctx, []statuseffect.Write{{Effect: statuseffect.Effect{
+			ID: uuid.New(), CharacterID: sheet, Kind: statuseffect.KindBleeding,
+			Params: statuseffect.Params{HPPerRound: 1}, AppliedAt: now(), UpdatedAt: now(),
+		}}}, bars(1<<40))
+		if err == nil {
+			t.Fatal("expected an error from the bar write")
+		}
+		if n := total(t); n != 1 {
+			t.Fatalf("rows = %d, want 1 — the failed bar must roll the status back", n)
+		}
+		if _, cur, _ := hp(t); cur != -16 {
+			t.Fatalf("hp = %d, want -16 untouched", cur)
+		}
+
+		// Só barras, sem efeitos: também grava.
+		if err := repo.Write(ctx, nil, bars(3)); err != nil {
+			t.Fatalf("bars only: %v", err)
+		}
+		if _, cur, _ := hp(t); cur != 3 {
+			t.Fatalf("hp = %d, want 3", cur)
 		}
 	})
 
@@ -169,7 +225,7 @@ func TestWrite(t *testing.T) {
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 		if err := pgstatuseffect.NewRepository(tx).Write(ctx,
-			[]statuseffect.Write{{Effect: prone(sheet, now())}}); err != nil {
+			[]statuseffect.Write{{Effect: prone(sheet, now())}}, nil); err != nil {
 			t.Fatalf("write in tx: %v", err)
 		}
 		if err := tx.Rollback(ctx); err != nil {
@@ -197,7 +253,7 @@ func TestListBySheets(t *testing.T) {
 		early := statuseffect.Effect{ID: uuid.New(), CharacterID: s1, Kind: statuseffect.KindAirborne, AppliedAt: at, UpdatedAt: at}
 		other := prone(s2, at)
 		unrelated := prone(s3, at)
-		err := repo.Write(ctx, []statuseffect.Write{{Effect: late}, {Effect: early}, {Effect: other}, {Effect: unrelated}})
+		err := repo.Write(ctx, []statuseffect.Write{{Effect: late}, {Effect: early}, {Effect: other}, {Effect: unrelated}}, nil)
 		if err != nil {
 			t.Fatalf("write: %v", err)
 		}
@@ -227,7 +283,7 @@ func TestListBySheets(t *testing.T) {
 		ctrl := uuid.New()
 		at := now()
 		full := Full(sheet, at, ctrl)
-		if err := repo.Write(ctx, full); err != nil {
+		if err := repo.Write(ctx, full, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		got, err := repo.ListBySheets(ctx, []uuid.UUID{sheet})
@@ -345,7 +401,7 @@ func TestWriteEvents(t *testing.T) {
 		other := uuid.New()
 		ev.ActionID = &action
 		ev.HiddenFrom = map[uuid.UUID]uuid.UUID{other: hid}
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: ev}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: ev}}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		got, err := repo.ListEventsByMatch(ctx, f.match)
@@ -374,7 +430,7 @@ func TestWriteEvents(t *testing.T) {
 		f := newEventFixture(t, pool, "ev1b")
 		ev := f.event(statuseffect.ChangeApplied, now())
 		ev.HiddenFrom = map[uuid.UUID]uuid.UUID{} // vazio grava NULL, como ausente
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: prone(f.sheet, now()), Event: ev}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: prone(f.sheet, now()), Event: ev}}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		var hiddenNull, actionNull bool
@@ -398,7 +454,7 @@ func TestWriteEvents(t *testing.T) {
 		err := repo.Write(ctx, []statuseffect.Write{
 			{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())},
 			{Effect: bad, Event: f.event(statuseffect.ChangeApplied, now())},
-		})
+		}, nil)
 		if err == nil {
 			t.Fatal("expected an error")
 		}
@@ -414,7 +470,7 @@ func TestWriteEvents(t *testing.T) {
 			{Effect: gone, Event: f.event(statuseffect.ChangeApplied, now())},
 			{Delete: true, Effect: gone, Event: f.event(statuseffect.ChangeRemoved, now())},
 			{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())},
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("write: %v", err)
 		}
@@ -427,7 +483,7 @@ func TestWriteEvents(t *testing.T) {
 		f := newEventFixture(t, pool, "ev3b")
 		ev := f.event(statuseffect.ChangeApplied, now())
 		ev.MatchID = uuid.New()
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: prone(f.sheet, now()), Event: ev}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: prone(f.sheet, now()), Event: ev}}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		if n := countEvents(t, pool); n != 0 {
@@ -438,10 +494,10 @@ func TestWriteEvents(t *testing.T) {
 	t.Run("a repeated event id is ignored", func(t *testing.T) {
 		f := newEventFixture(t, pool, "ev4")
 		w := statuseffect.Write{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())}
-		if err := repo.Write(ctx, []statuseffect.Write{w}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{w}, nil); err != nil {
 			t.Fatalf("first: %v", err)
 		}
-		if err := repo.Write(ctx, []statuseffect.Write{w}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{w}, nil); err != nil {
 			t.Fatalf("second: %v", err)
 		}
 		if n := countEvents(t, pool); n != 1 {
@@ -457,7 +513,7 @@ func TestWriteEvents(t *testing.T) {
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 		if err := pgstatuseffect.NewRepository(tx).Write(ctx, []statuseffect.Write{
-			{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())}}); err != nil {
+			{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())}}, nil); err != nil {
 			t.Fatalf("write in tx: %v", err)
 		}
 		if err := tx.Rollback(ctx); err != nil {
@@ -483,7 +539,7 @@ func TestListEventsByMatch(t *testing.T) {
 		second := f.event(statuseffect.ChangeEdited, at) // mesmo instante: vale a ordem de gravação
 		if err := repo.Write(ctx, []statuseffect.Write{
 			{Effect: e, Event: late}, {Effect: e, Event: first}, {Effect: e, Event: second},
-		}); err != nil {
+		}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		got, err := repo.ListEventsByMatch(ctx, f.match)
@@ -507,7 +563,7 @@ func TestListEventsByMatch(t *testing.T) {
 			{Effect: prone(f.sheet, now()), Event: mine},
 			{Effect: statuseffect.Effect{ID: uuid.New(), CharacterID: f.sheet, Kind: statuseffect.KindAirborne,
 				AppliedAt: now(), UpdatedAt: now()}, Event: theirs},
-		}); err != nil {
+		}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		got, err := repo.ListEventsByMatch(ctx, f.match)
@@ -523,7 +579,7 @@ func TestListEventsByMatch(t *testing.T) {
 		if err := repo.Write(ctx, []statuseffect.Write{
 			{Effect: e, Event: f.event(statuseffect.ChangeApplied, now())},
 			{Delete: true, Effect: e, Event: f.event(statuseffect.ChangeRemoved, now().Add(time.Second))},
-		}); err != nil {
+		}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		got, err := repo.ListEventsByMatch(ctx, f.match)
@@ -544,7 +600,7 @@ func TestListEventsByMatch(t *testing.T) {
 		bad := f.event(statuseffect.ChangeApplied, now())
 		if err := repo.Write(ctx, []statuseffect.Write{
 			{Effect: prone(f.sheet, now()), Event: good}, {Effect: prone(f.sheet, now()), Event: bad},
-		}); err != nil {
+		}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		if _, err := pool.Exec(ctx, `UPDATE status_effect_events SET views = '[1]' WHERE uuid = $1`, bad.ID); err != nil {
@@ -580,7 +636,7 @@ func TestLatestListings(t *testing.T) {
 		inA.Listing = statuseffect.Audience{Players: []uuid.UUID{}}
 		inB := f.event(statuseffect.ChangeEdited, now().Add(time.Minute))
 		inB.MatchID = matchB
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: inA}, {Effect: e, Event: inB}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: inA}, {Effect: e, Event: inB}}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		got, err := repo.LatestListings(ctx, []uuid.UUID{e.ID, uuid.New()})
@@ -599,7 +655,7 @@ func TestLatestListings(t *testing.T) {
 		a := f.event(statuseffect.ChangeApplied, at)
 		b := f.event(statuseffect.ChangeEdited, at)
 		b.Listing = statuseffect.Audience{Players: []uuid.UUID{f.player}}
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: a}, {Effect: e, Event: b}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: a}, {Effect: e, Event: b}}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		got, err := repo.LatestListings(ctx, []uuid.UUID{e.ID})
@@ -616,7 +672,7 @@ func TestLatestListings(t *testing.T) {
 		e := prone(f.sheet, now())
 		ev := f.event(statuseffect.ChangeApplied, now())
 		ev.Listing = statuseffect.Audience{Players: []uuid.UUID{}}
-		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: ev}}); err != nil {
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: ev}}, nil); err != nil {
 			t.Fatalf("write: %v", err)
 		}
 		got, _ := repo.LatestListings(ctx, []uuid.UUID{e.ID})
@@ -707,7 +763,7 @@ func TestRevealableInMatch(t *testing.T) {
 	pgtest.InsertTestMatchParticipant(t, pool, f.match.String(), f.sheet.String(), now())
 	pgtest.InsertTestMatchParticipant(t, pool, matchB.String(), f.sheet.String(), now())
 	e := prone(f.sheet, now())
-	if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: f.event(statuseffect.ChangeApplied, now())}}); err != nil {
+	if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: f.event(statuseffect.ChangeApplied, now())}}, nil); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	for _, c := range []struct {

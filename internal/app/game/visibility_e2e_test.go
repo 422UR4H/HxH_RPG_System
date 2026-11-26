@@ -56,23 +56,23 @@ type visibilityFixture struct {
 // rollActionDice's real consumption order (matchsession/match_session.go), not guessed from
 // the reaction table alone:
 //
-//	Attack.Hit (2D10 test)                  → primary 2 + secondary 2 = 4
+//	Attack.Hit (2D10 test)                  → 2 (só o conjunto; extras só com viés)
 //	Sword damage (D10+D4, single set)       → 2
-//	closedDodge's Evasion entry (2D10 test) → primary 2 + secondary 2 = 4 (Skills are rolled
+//	closedDodge's Evasion entry (2D10 test) → 2 (Skills are rolled
 //	                                           BEFORE Dodge — rollActionDice walks a.Skills,
 //	                                           then a.Dodge)
-//	closedDodge's Dodge (2D10 test)         → primary 2 + secondary 2 = 4
+//	closedDodge's Dodge (2D10 test)         → 2
 //
-// 14 faces total. See docs/dev/match/combat-engine.md § Quantos dados cada reação consome:
-// closedDodge alone is 8 faces, not 4 — Evasion is a second full 2D10 test, not a modifier on
+// 8 faces total. See docs/dev/match/combat-engine.md § Quantos dados cada reação consome:
+// closedDodge alone is 4 faces, not 2 — Evasion is a second full 2D10 test, not a modifier on
 // the first. open_reaction rolls nothing new (matchsession.OpenReaction only flips a flag and
 // re-derives), so the budget does not grow between attach and open.
 func visibilityFaces() []int {
 	return []int{
-		6, 4, 1, 1, // Attack.Hit: primary 6,4 (→10 total); secondary 1,1 unused filler
+		6, 4, // Attack.Hit: 6,4 (→10 total)
 		7, 3, // Sword damage: D10=7, D4=3, raw 7+3+2=12
-		5, 5, 1, 1, // Evasion: primary 5,5; secondary 1,1 unused filler
-		9, 2, 1, 1, // Dodge: primary 9,2; secondary 1,1 unused filler
+		5, 5, // Evasion: 5,5
+		9, 2, // Dodge: 9,2
 	}
 }
 
@@ -316,8 +316,8 @@ func kindOfFirstTarget(t *testing.T, c *collector) string {
 // TestE2E_AClosedDodgeReachesAThirdPartyAsAPlainDodge is the phase's headline criterion:
 // two clients connected as different players receive DIFFERENT payloads for the SAME turn.
 //
-// The dice are scripted. Budget four faces per 2D10 test — RollCalculator.Roll always rolls
-// Primary AND Secondary — plus two for the sword's damage set.
+// The dice are scripted. Budget two faces per 2D10 test — RollCalculator.Roll rola só o
+// conjunto, sem viés não cai extra — plus two for the sword's damage set.
 func TestE2E_AClosedDodgeReachesAThirdPartyAsAPlainDodge(t *testing.T) {
 	f := newVisibilityFixture(t)
 	master, defenderConn, bystanderConn := f.connect(t)

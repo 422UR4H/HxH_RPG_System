@@ -304,30 +304,27 @@ func TestE2E_AreaAttackFixtureStandsATurn(t *testing.T) {
 // and then B→A. What each target takes differs between the two runs, and that difference IS
 // the phase's objective.
 //
-// Faces, empirically established by reading rollActionDice/RollCalculator.Roll rather than
-// trusting the brief's count (which predicted 6 and does not account for the fact that a 2D10
-// test rolls BOTH sets — Primary AND Secondary, 4 faces total — even though only Primary feeds
-// the total when nothing biases the pick). In consumption order:
+// Faces, established by reading rollActionDice/RollCalculator.Roll. Um teste 2D10 rola só o
+// conjunto (2 faces); os extras de um viés só caem quando o viés os pede, e aqui não há viés
+// nenhum. In consumption order:
 //
-//	Attack.Hit   (2D10 test)      → primary 2 + secondary 2 = 4 (only primary used: 6+4=10)
+//	Attack.Hit   (2D10 test)      → 2: 6+4=10
 //	Sword damage (D10+D4, direct) → 2, both used: 7+3+2 flat = 12 raw
-//	A's Repel    (2D10 test)      → primary 2 + secondary 2 = 4 (only primary used: 7+4=11)
+//	A's Repel    (2D10 test)      → 2: 7+4=11
 //
-// 10 faces total, not 6. B's "nothing" and C's seated default roll nothing at all, confirmed by
+// 6 faces total. B's "nothing" and C's seated default roll nothing at all, confirmed by
 // reading ReactionKind.RequiredComponents (nothing needs no components) and rollActionDice (a
 // default reaction's dodge is passive and never touches the source).
 //
 // B's "nothing" is opened here although it never needs the floor: opening is where it collides,
 // and that placement is the master's (owner decision, 2026-10-12).
-// The secondary-set fillers (index 2,3 and 8,9) are never read into any assertion — pickAttempt
-// ignores Secondary whenever SystemBias is 0, which it always is here — so their value does not
-// matter, only their presence: scripting fewer than 10 faces makes the source overrun and every
-// later assertion be driven by the -1 sentinel instead of a real roll.
+// Scripting fewer than 6 faces makes the source overrun and every later assertion be driven by
+// the -1 sentinel instead of a real roll.
 func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 	faces := []int{
-		6, 4, 1, 1, // Attack.Hit: primary 6,4 (→10); secondary 1,1 (unused filler)
+		6, 4, // Attack.Hit: 6,4 (→10)
 		7, 3, // Sword damage: D10=7, D4=3 → raw 7+3+2=12
-		7, 4, 1, 1, // A's repel: primary 7,4 (→11); secondary 1,1 (unused filler)
+		7, 4, // A's repel: 7,4 (→11)
 	}
 
 	// run drives one full pass: attacker attacks all three, A attaches repel, B attaches
@@ -417,13 +414,13 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 // places a client reads it from: the master's open payload, the reconnect's
 // match_full_state.resolution, and the settled payload projected to a bystander.
 func TestE2E_TargetsComeInChainOrder(t *testing.T) {
-	// Attack.Hit (4) + Sword damage (2) + two dodges (4 each) = 14 faces; the tail is slack,
+	// Attack.Hit (2) + Sword damage (2) + two dodges (2 each) = 8 faces; the tail is slack,
 	// because a short script makes the source overrun and drives everything by the -1 sentinel.
 	faces := []int{
-		6, 4, 1, 1, // Attack.Hit
+		6, 4, // Attack.Hit
 		7, 3, // Sword damage
-		3, 3, 1, 1, // first dodge
-		3, 3, 1, 1, // second dodge
+		3, 3, // first dodge
+		3, 3, // second dodge
 		1, 1, 1, 1, // slack
 	}
 	f := newAreaFixture(t, faces)

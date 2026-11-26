@@ -575,13 +575,14 @@ type TurnClosedPayload struct {
 //
 // This is the applied number, not a projection: resolution_updated carries the dry run, and
 // only the close writes it to the sheet. HP is what the sheet holds now; MaxHP is the bar's
-// own maximum, so a client can draw the bar without a REST round trip; Damage is what took
-// it there, which is what an event list needs to say "-16" without diffing two snapshots.
+// own maximum, so a client can draw the bar without a REST round trip; HPChange is what took
+// it there, with the natural sign (HP now minus HP before): -16 for a loss, +45 for a return
+// from Dead. It is what an event list needs to say "-16" without diffing two snapshots.
 type CharacterHpChangedPayload struct {
 	CharacterID uuid.UUID `json:"characterId"`
 	HP          int       `json:"hp"`
 	MaxHP       int       `json:"maxHp"`
-	Damage      int       `json:"damage"`
+	HPChange    int       `json:"hpChange"`
 }
 
 // ActionEditedPayload confirms the edit to the MASTER. It carries no numbers — the recomputed
@@ -786,6 +787,8 @@ type RollResultPayload struct {
 	IsCritical        bool   `json:"isCritical"`
 	IsCriticalFailure bool   `json:"isCriticalFailure"`
 	Margin            *int   `json:"margin,omitempty"`
+	// AutoFailed: um efeito de status fez o teste falhar sem rolar (Total 0, sem dados).
+	AutoFailed bool `json:"autoFailed,omitempty"`
 }
 
 // ReactionResultPayload is what one target answered with, as the master reads it.
@@ -840,6 +843,12 @@ type CharacterResultPayload struct {
 	RawDamage       int  `json:"rawDamage"`
 	DefenseApplied  int  `json:"defenseApplied"`
 	ProjectedDamage int  `json:"projectedDamage"`
+	// CriticalDamage: o acerto crítico dobrou o dano final deste alvo. Segue a visibilidade
+	// do projectedDamage — é um fato sobre o dano.
+	CriticalDamage bool `json:"criticalDamage,omitempty"`
+	// Dies: aplicado este dano, o alvo morreria. Só o mestre recebe (service.ProjectResolution
+	// zera para os demais); a mesa fica sabendo pelo status dead, através da névoa.
+	Dies bool `json:"dies,omitempty"`
 	// Reaction is what this target answered with, opened or not — the default reaction the
 	// engine seated for a target that never answered included. nil only when the turn holds
 	// no reaction for this target.
@@ -917,6 +926,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 		IsCritical:        res.ActionResult.IsCritical,
 		IsCriticalFailure: res.ActionResult.IsCriticalFailure,
 		Margin:            res.ActionResult.Margin,
+		AutoFailed:        res.ActionResult.AutoFailed,
 	}
 	for _, cr := range res.CharacterResults {
 		p.Targets = append(p.Targets, CharacterResultPayload{
@@ -929,6 +939,8 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			RawDamage:       cr.RawDamage,
 			DefenseApplied:  cr.DefenseApplied,
 			ProjectedDamage: cr.EffectiveDamage,
+			CriticalDamage:  cr.CriticalDamage,
+			Dies:            cr.Dies,
 			Reaction:        reactionResultPayloadOf(cr),
 			Payouts:         payoutPayloadsOf(cr.Payouts),
 			Escape:          escapeResultPayloadOf(cr.Escape),
@@ -1632,6 +1644,9 @@ type RemoveStatusEffectPayload struct {
 	// ações da fila que ele cancelou voltem (D3), revalidadas. Fora da janela do desfazer é
 	// ignorado: não há o que devolver. Ausente = false.
 	RestoreCancelledActions bool `json:"restoreCancelledActions,omitempty"`
+	// HP é o HP com que o personagem volta ao tirar o Morto, dentro de [mínimo, máximo] da barra
+	// de vida. Ausente = o mínimo, só se o HP estiver abaixo dele. Recusado em outro tipo.
+	HP *int `json:"hp,omitempty"`
 }
 
 // RelinkStatusEffectPayload é o relink_status_effect: ActionID nil (ou null) = a mudança é do

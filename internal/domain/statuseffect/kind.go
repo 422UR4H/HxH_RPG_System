@@ -29,6 +29,7 @@ const (
 	KindCompelled    Kind = "compelled"    // Compelido
 	KindControlled   Kind = "controlled"   // Controlado
 	KindHidden       Kind = "hidden"       // Escondido
+	KindDead         Kind = "dead"         // Morto
 )
 
 var allKinds = []Kind{
@@ -36,7 +37,7 @@ var allKinds = []Kind{
 	KindInjured, KindSlowed, KindSense, KindWeakened,
 	KindBleeding, KindBurning, KindFreezing, KindPoisoned,
 	KindAsphyxiating, KindProne, KindAirborne, KindOpenGuard,
-	KindCompelled, KindControlled, KindHidden,
+	KindCompelled, KindControlled, KindHidden, KindDead,
 }
 
 func ParseKind(s string) (Kind, error) {
@@ -56,7 +57,7 @@ var kindLabel = map[Kind]string{
 	KindBleeding: "Sangrando", KindBurning: "Queimando", KindFreezing: "Congelando",
 	KindPoisoned: "Envenenado", KindAsphyxiating: "Asfixiando", KindProne: "Caído",
 	KindAirborne: "No ar", KindOpenGuard: "Guarda aberta", KindCompelled: "Compelido",
-	KindControlled: "Controlado", KindHidden: "Escondido",
+	KindControlled: "Controlado", KindHidden: "Escondido", KindDead: "Morto",
 }
 
 // Label é o nome do tipo em português, para texto que o usuário lê (as recusas por status). O
@@ -76,7 +77,7 @@ var kindState = map[Kind]string{
 	KindBleeding: "sangrando", KindBurning: "queimando", KindFreezing: "congelando",
 	KindPoisoned: "envenenado", KindAsphyxiating: "asfixiando", KindProne: "caído",
 	KindAirborne: "no ar", KindOpenGuard: "com a guarda aberta", KindCompelled: "compelido",
-	KindControlled: "controlado", KindHidden: "escondido",
+	KindControlled: "controlado", KindHidden: "escondido", KindDead: "morto",
 }
 
 // StatePhrase é o tipo em forma de estado, para frases "está …" que o usuário lê (as recusas
@@ -110,7 +111,7 @@ func (id Identity) StatePhrase() string {
 func (k Kind) PublicByDefault() bool {
 	switch k {
 	case KindProne, KindAirborne, KindRestrained, KindBurning, KindUnconscious,
-		KindStunned, KindAsphyxiating, KindOpenGuard:
+		KindStunned, KindAsphyxiating, KindOpenGuard, KindDead:
 		return true
 	}
 	return false

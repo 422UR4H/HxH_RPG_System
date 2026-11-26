@@ -109,7 +109,7 @@ func TestPieces_Composition(t *testing.T) {
 		}},
 		{"vision nullified", se.Effect{Kind: se.KindSense, Sense: se.SenseVision, Params: se.Params{Level: se.SenseNullified}}, []se.Piece{
 			{Kind: se.PieceAutoFail, Scope: se.Scope{Sense: se.SenseVision}},
-			pen(dom(se.DomainAttack), 1, 0), pen(dom(se.DomainDefense), 1, 0),
+			pen(dom(se.DomainAttack), 1, 0), pen(dom(se.DomainDefense), 1, 0), pen(dom(se.DomainDodge), 1, 0),
 		}},
 		{"hearing nullified has no domain penalty", se.Effect{Kind: se.KindSense, Sense: se.SenseHearing, Params: se.Params{Level: se.SenseNullified}}, []se.Piece{
 			{Kind: se.PieceAutoFail, Scope: se.Scope{Sense: se.SenseHearing}},
@@ -145,6 +145,7 @@ func TestPieces_Composition(t *testing.T) {
 		{"prone", se.Effect{Kind: se.KindProne}, []se.Piece{
 			{Kind: se.PieceReactionRestricted, Reaction: se.ReactionReflexDodge, Restriction: se.RestrictionDisadvantage},
 			{Kind: se.PieceReactionRestricted, Reaction: se.ReactionRepel, Restriction: se.RestrictionDisadvantage},
+			{Kind: se.PieceReactionRestricted, Reaction: se.ReactionEscape, Restriction: se.RestrictionDisadvantage},
 		}},
 		{"airborne", se.Effect{Kind: se.KindAirborne}, []se.Piece{
 			{Kind: se.PieceReactionRestricted, Reaction: se.ReactionReflexDodge, Restriction: se.RestrictionForbidden},
@@ -162,6 +163,7 @@ func TestPieces_Composition(t *testing.T) {
 		{"controlled", se.Effect{Kind: se.KindControlled, Params: se.Params{ControllerID: &ctrl}}, []se.Piece{
 			{Kind: se.PieceControl, ControllerID: &ctrl},
 		}},
+		{"dead", se.Effect{Kind: se.KindDead}, stunnedBase()},
 		{"hidden", se.Effect{Kind: se.KindHidden}, nil},
 	}
 	for _, tt := range tests {
@@ -209,6 +211,9 @@ func TestPieces_Containment(t *testing.T) {
 	})
 	t.Run("stunned contained in unconscious", func(t *testing.T) {
 		subset(t, withoutRecovery(stunned.Pieces()), unconscious.Pieces())
+	})
+	t.Run("unconscious contained in dead", func(t *testing.T) {
+		subset(t, unconscious.Pieces(), se.Effect{Kind: se.KindDead}.Pieces())
 	})
 	t.Run("unconscious has no recovery", func(t *testing.T) {
 		if len(withoutRecovery(unconscious.Pieces())) != len(unconscious.Pieces()) {

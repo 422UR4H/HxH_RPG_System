@@ -128,7 +128,7 @@ func rollCheck(rc action.RollCheck, keep bool) RollCheck {
 	skillValue, result := rc.SkillValue, rc.Result
 	out.SkillValue = &skillValue
 	out.Result = &result
-	out.Attempts = &RollAttempts{Primary: rc.Attempts.Primary, Secondary: rc.Attempts.Secondary}
+	out.Attempts = &RollAttempts{Primary: rc.Attempts.Primary, Extra: rc.Attempts.Extra}
 	return out
 }
 

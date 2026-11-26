@@ -36,8 +36,37 @@ func (s *MatchSession) SetStatusEffects(byChar map[uuid.UUID][]statuseffect.Effe
 	for id, es := range byChar {
 		if len(es) > 0 {
 			s.statusEffects[id] = cloneEffects(es)
+			s.noteDead(id, es)
 		}
 	}
+}
+
+// noteDead lembra que a ficha teve o Morto nesta partida.
+func (s *MatchSession) noteDead(charID uuid.UUID, es []statuseffect.Effect) {
+	for _, e := range es {
+		if e.Kind == statuseffect.KindDead {
+			s.everDead[charID] = true
+			return
+		}
+	}
+}
+
+// DeadMarks devolve o que o fim da partida grava em character_sheets.dead_at: dead são as fichas
+// com o Morto agora; undone, as que o tiveram em algum momento da partida e não o têm mais (a
+// morte desfeita pelo mestre). Ficha que nunca esteve morta aqui não entra em nenhuma lista
+// (a marca manual do mestre fica). Ordem estável.
+func (s *MatchSession) DeadMarks() (dead, undone []uuid.UUID) {
+	for id := range s.everDead {
+		if s.IsDead(id) {
+			dead = append(dead, id)
+		} else {
+			undone = append(undone, id)
+		}
+	}
+	less := func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) }
+	slices.SortFunc(dead, less)
+	slices.SortFunc(undone, less)
+	return dead, undone
 }
 
 // StatusEffectsOf devolve cópias dos efeitos da ficha, em ordem; nunca nil.
@@ -47,6 +76,7 @@ func (s *MatchSession) StatusEffectsOf(charID uuid.UUID) []statuseffect.Effect {
 
 // ReplaceStatusEffects troca o conjunto da ficha; vazio apaga a entrada.
 func (s *MatchSession) ReplaceStatusEffects(charID uuid.UUID, effects []statuseffect.Effect) {
+	s.noteDead(charID, effects)
 	if len(effects) == 0 {
 		delete(s.statusEffects, charID)
 		return
@@ -113,9 +143,13 @@ type block struct {
 	kinds []statuseffect.Kind
 }
 
-// reactionNeed é uma peça de reação que um tipo de reação usa, com o domínio que ela exige
-// livre (decisão 9: esquiva → reflexo e evasão; defesa → defesa padrão e repelir; escapar →
-// movimento E esquiva, §5.4).
+// reactionNeed é uma peça de reação que um tipo de reação usa, com os domínios que ela exige
+// livres (decisão 9 e os conjuntos do fluxos.excalidraw, 2026-11-25): esquiva → reflexo e
+// evasão; defesa → defesa padrão; repelir → ataque E defesa; escapar → movimento E esquiva
+// (§5.4). O repelir está nos dois porque (1) é atacar o ataque — você acerta o golpe do
+// oponente — e (2) o golpe que você ia dar contra quem te ataca pode virar o repelir sem
+// penalidade; continua sendo um teste só (Repel). Travar qualquer um dos dois o proíbe, e a
+// recusa nomeia o domínio travado ("não pode atacar" / "não pode defender").
 type reactionNeed struct {
 	piece   statuseffect.Reaction
 	domains []statuseffect.Domain
@@ -125,7 +159,7 @@ var (
 	needReflex  = reactionNeed{statuseffect.ReactionReflexDodge, []statuseffect.Domain{statuseffect.DomainDodge}}
 	needEvasion = reactionNeed{statuseffect.ReactionEvasion, []statuseffect.Domain{statuseffect.DomainDodge}}
 	needDefense = reactionNeed{statuseffect.ReactionDefense, []statuseffect.Domain{statuseffect.DomainDefense}}
-	needRepel   = reactionNeed{statuseffect.ReactionRepel, []statuseffect.Domain{statuseffect.DomainDefense}}
+	needRepel   = reactionNeed{statuseffect.ReactionRepel, []statuseffect.Domain{statuseffect.DomainAttack, statuseffect.DomainDefense}}
 	needEscape  = reactionNeed{statuseffect.ReactionEscape, []statuseffect.Domain{statuseffect.DomainMovement, statuseffect.DomainDodge}}
 )
 
@@ -389,7 +423,11 @@ func (s *MatchSession) DropRefusedByStatusWithReactions(charID uuid.UUID) ([]Sta
 	for _, a := range removed {
 		s.dropFromQueue(a)
 	}
-	return drops, s.reseatForStatus(charID)
+	swapped := s.reseatForStatus(charID)
+	// O que fica pendente lê o conjunto novo: velocidades (a fila se reordena) e skills[]. Depois
+	// do retrato e da saída: o desfazer devolve as que saíram com os valores de antes.
+	s.rederiveForStatus(charID)
+	return drops, swapped
 }
 
 // StatusDrop é uma ação que DropRefusedByStatus tirou da fila, com o retrato do instante da
@@ -832,12 +870,19 @@ func (s *MatchSession) restoreRefusal(d StatusDrop) (string, []statuseffect.Kind
 	return "", nil
 }
 
-// HasReactionOnOpenTurn diz se o personagem tem uma reação no turno aberto — o que uma mudança
-// de status pode ter refeito, e por isso a resolução volta ao mestre.
-func (s *MatchSession) HasReactionOnOpenTurn(charID uuid.UUID) bool {
+// TakesPartInOpenTurn diz se o personagem está no turno aberto — o ator da ação, um alvo dela
+// ou o autor de uma reação. Uma mudança de status dele pode ter refeito uma reação ou mudado o
+// viés de um teste que a resolução lê, e por isso a resolução é refeita sob a trava de escrita
+// (onde os dados que faltam caem) e volta ao mestre. Antes perguntava só pela reação: um status
+// no ator deixava a primeira leitura para quem só lê.
+func (s *MatchSession) TakesPartInOpenTurn(charID uuid.UUID) bool {
 	t := s.openTurn()
 	if t == nil {
 		return false
+	}
+	a := t.ActionRef()
+	if a.GetActorID() == charID || slices.Contains(a.TargetID, charID) {
+		return true
 	}
 	for _, r := range t.GetReactions() {
 		if r.GetActorID() == charID {

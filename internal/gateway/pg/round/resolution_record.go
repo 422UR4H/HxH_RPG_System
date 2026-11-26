@@ -78,6 +78,7 @@ type rollResultRecord struct {
 	IsCritical        bool   `json:"isCritical"`
 	IsCriticalFailure bool   `json:"isCriticalFailure"`
 	Margin            *int   `json:"margin,omitempty"`
+	AutoFailed        bool   `json:"autoFailed,omitempty"`
 }
 
 // rollOutcomeRecord mirrors service.RollOutcome field-for-field, in order, for the same
@@ -97,6 +98,10 @@ type rollOutcomeRecord struct {
 	Total             int    `json:"total"`
 	IsCritical        bool   `json:"isCritical"`
 	IsCriticalFailure bool   `json:"isCriticalFailure"`
+	Rolled            []int  `json:"rolled,omitempty"`
+	AutoFailed        bool   `json:"autoFailed,omitempty"`
+	// Short não é gravado: é o pedido de dados de um Derive, sem sentido depois do fechamento.
+	Short int `json:"-"`
 }
 
 type characterResultRecord struct {
@@ -123,6 +128,8 @@ type characterResultRecord struct {
 	RawDamage       int               `json:"rawDamage"`
 	DefenseApplied  int               `json:"defenseApplied"`
 	EffectiveDamage int               `json:"effectiveDamage"`
+	CriticalDamage  bool              `json:"criticalDamage,omitempty"`
+	Dies            bool              `json:"dies,omitempty"`
 	Payouts         []modifierRecord  `json:"payouts,omitempty"`
 	// Escape is the escape's verdict and, when it failed, where the master put the piece —
 	// what the history needs to say why a piece moved or did not (B13). nil outside the
@@ -217,6 +224,7 @@ func encodeResolution(res *service.TurnResolution, landingViews map[uuid.UUID]ma
 			},
 			DamageDice: cr.DamageDice, RawDamage: cr.RawDamage,
 			DefenseApplied: cr.DefenseApplied, EffectiveDamage: cr.EffectiveDamage,
+			CriticalDamage: cr.CriticalDamage, Dies: cr.Dies,
 		}
 		if cr.Escape != nil {
 			out.Escape = &escapeRecord{
@@ -286,6 +294,7 @@ func DecodeResolution(raw []byte) *service.TurnResolution {
 			},
 			DamageDice: c.DamageDice, RawDamage: c.RawDamage,
 			DefenseApplied: c.DefenseApplied, EffectiveDamage: c.EffectiveDamage,
+			CriticalDamage: c.CriticalDamage, Dies: c.Dies,
 		}
 		if c.Escape != nil {
 			cr.Escape = &service.EscapeResult{
