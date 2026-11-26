@@ -143,9 +143,13 @@ type block struct {
 	kinds []statuseffect.Kind
 }
 
-// reactionNeed é uma peça de reação que um tipo de reação usa, com o domínio que ela exige
-// livre (decisão 9: esquiva → reflexo e evasão; defesa → defesa padrão e repelir; escapar →
-// movimento E esquiva, §5.4).
+// reactionNeed é uma peça de reação que um tipo de reação usa, com os domínios que ela exige
+// livres (decisão 9 e os conjuntos do fluxos.excalidraw, 2026-11-25): esquiva → reflexo e
+// evasão; defesa → defesa padrão; repelir → ataque E defesa; escapar → movimento E esquiva
+// (§5.4). O repelir está nos dois porque (1) é atacar o ataque — você acerta o golpe do
+// oponente — e (2) o golpe que você ia dar contra quem te ataca pode virar o repelir sem
+// penalidade; continua sendo um teste só (Repel). Travar qualquer um dos dois o proíbe, e a
+// recusa nomeia o domínio travado ("não pode atacar" / "não pode defender").
 type reactionNeed struct {
 	piece   statuseffect.Reaction
 	domains []statuseffect.Domain
@@ -155,7 +159,7 @@ var (
 	needReflex  = reactionNeed{statuseffect.ReactionReflexDodge, []statuseffect.Domain{statuseffect.DomainDodge}}
 	needEvasion = reactionNeed{statuseffect.ReactionEvasion, []statuseffect.Domain{statuseffect.DomainDodge}}
 	needDefense = reactionNeed{statuseffect.ReactionDefense, []statuseffect.Domain{statuseffect.DomainDefense}}
-	needRepel   = reactionNeed{statuseffect.ReactionRepel, []statuseffect.Domain{statuseffect.DomainDefense}}
+	needRepel   = reactionNeed{statuseffect.ReactionRepel, []statuseffect.Domain{statuseffect.DomainAttack, statuseffect.DomainDefense}}
 	needEscape  = reactionNeed{statuseffect.ReactionEscape, []statuseffect.Domain{statuseffect.DomainMovement, statuseffect.DomainDodge}}
 )
 

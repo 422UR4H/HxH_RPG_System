@@ -58,6 +58,12 @@ Sob certas condições, um teste é feito **com vantagem** ou **com desvantagem*
 
 Vantagens e desvantagens se acumulam, nível a nível, e **uma cancela a outra**: duas vantagens e uma desvantagem sobram em uma vantagem. Quando o personagem tem um **ajuste em número** (um bônus ou uma penalidade), ele é somado ao resultado e não conta como nível. Há um limite de 10 níveis por teste. Um dado que já caiu **nunca é rolado de novo**: se a vantagem aumenta, só os dados que faltam são rolados.
 
+Quando o que pesa no teste é um **status** do personagem (ferido, com a visão anulada, sem
+equilíbrio…), **um mesmo status pesa uma vez só num teste**, mesmo que alcance mais de uma coisa
+que o teste é; status diferentes somam. Com a visão anulada, o repelir — que é ataque e defesa ao
+mesmo tempo — sofre uma desvantagem, não duas ([Do que cada ação é
+feita](combate/reacoes.md#do-que-cada-ação-é-feita)).
+
 Um exemplo de desvantagem em combate: **trocar uma ação que você já havia declarado**. Mudar de ideia no meio da batalha custa caro — não compensa abandonar uma ação para tentar outra que exija muitos testes.
 
 ### Regra alternativa: D20

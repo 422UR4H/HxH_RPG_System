@@ -1,14 +1,18 @@
 package statuseffect
 
 import (
+	"slices"
+
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
 // Test descreve um teste de dados para a leitura dos status: o que ele é, não como rola.
 type Test struct {
-	Skill     enum.SkillName // "" quando não há perícia
-	Domain    Domain         // "" quando não é teste de domínio (velocidade de ação, skills[])
-	Reaction  Reaction       // "" quando não é reação
+	Skill enum.SkillName // "" quando não há perícia
+	// Domains são os conjuntos da ação em que o teste está; vazio quando não é teste de conjunto
+	// (velocidade de ação, skills[]). O repelir é o único teste em dois: ataque E defesa (R1).
+	Domains   []Domain
+	Reaction  Reaction // "" quando não é reação
 	MoveSpeed bool
 }
 
@@ -24,15 +28,32 @@ type RollEffect struct {
 
 // RollEffectOf soma as peças de todos os efeitos que alcançam o teste. Não lê as restrições
 // "forbidden": o bloqueio é do Summarize.
+//
+// R4 — um status pesa uma vez só no mesmo teste, pelos conjuntos: a lista de conjuntos de um
+// efeito (Visão anulada: ataque, defesa e esquiva; Tato no equilíbrio: os quatro; Lesionado: um
+// por conjunto lesionado) diz até onde ele alcança, não quanto pesa. Num teste em dois conjuntos
+// (o repelir) as peças de conjunto do MESMO efeito contam uma vez, pela maior desvantagem e pela
+// maior penalidade entre elas. Efeitos diferentes continuam somando, e as peças dos outros
+// escopos (aptidão, sentido, velocidade de movimento) e as de reação seguem como antes.
 func RollEffectOf(effects []Effect, t Test) RollEffect {
 	var r RollEffect
 	apt := AptitudeOfSkill(t.Skill)
 	sense, isSense := SenseOfSkill(t.Skill)
 	for _, e := range effects {
+		var domainHit bool
+		var domainDis, domainPen int
 		for _, p := range e.Pieces() {
 			switch p.Kind {
 			case PieceTestPenalty:
-				if scopeReaches(p.Scope, t, apt, sense, isSense) {
+				if p.Scope.Domain != "" {
+					if slices.Contains(t.Domains, p.Scope.Domain) {
+						domainHit = true
+						domainDis = max(domainDis, p.Disadvantage)
+						domainPen = max(domainPen, p.Penalty)
+					}
+					continue
+				}
+				if scopeReaches(p.Scope, apt, sense, isSense, t.MoveSpeed) {
 					r.Bias -= p.Disadvantage
 					r.Penalty -= p.Penalty
 					r.Kinds = addKind(r.Kinds, e.Kind)
@@ -56,20 +77,25 @@ func RollEffectOf(effects []Effect, t Test) RollEffect {
 				}
 			}
 		}
+		if domainHit {
+			r.Bias -= domainDis
+			r.Penalty -= domainPen
+			r.Kinds = addKind(r.Kinds, e.Kind)
+		}
 	}
 	return r
 }
 
-func scopeReaches(s Scope, t Test, apt Aptitude, sense Sense, isSense bool) bool {
+// scopeReaches diz se um escopo que não é de conjunto alcança o teste (os de conjunto são lidos
+// à parte, uma vez por efeito — R4 em RollEffectOf).
+func scopeReaches(s Scope, apt Aptitude, sense Sense, isSense, moveSpeed bool) bool {
 	switch {
 	case s.Aptitude != "":
 		return s.Aptitude == apt
-	case s.Domain != "":
-		return s.Domain == t.Domain
 	case s.Sense != "":
 		return senseReaches(s, sense, isSense)
 	case s.MoveSpeed:
-		return t.MoveSpeed
+		return moveSpeed
 	}
 	return false
 }

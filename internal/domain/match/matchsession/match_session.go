@@ -2356,7 +2356,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	}
 	a.Move.Speed.SkillName = skill.String()
 	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
-	moveTest := statuseffect.Test{Skill: skill, Domain: statuseffect.DomainMovement, MoveSpeed: true}
+	moveTest := statuseffect.Test{Skill: skill, Domains: []statuseffect.Domain{statuseffect.DomainMovement}, MoveSpeed: true}
 	if a.ReactionKind.Displaces() {
 		// O teste de movimento de uma fuga é o segundo teste dela (spec §16.4 itens 34 e 37).
 		moveTest.Reaction = statuseffect.ReactionEscape

@@ -740,8 +740,9 @@ func (tr TurnResolver) deriveHit(
 		SkillValue: skill + tr.actorWeaponProficiency(in, a),
 		Condition:  a.Attack.Hit.Context.Condition,
 		AgainstID:  against,
+		// TODO(finta): quando a finta ganhar resolução, o teste dela é do conjunto ataque — recebe tudo o que pesa no ataque (Test{Skill: Feint, Domains: ataque}).
 		Status: StatusRollOf(in.Effects[a.GetActorID()], statuseffect.Test{
-			Skill: skillNameOf(a.Attack.Hit.SkillName), Domain: statuseffect.DomainAttack,
+			Skill: skillNameOf(a.Attack.Hit.SkillName), Domains: []statuseffect.Domain{statuseffect.DomainAttack},
 		}),
 	})
 }

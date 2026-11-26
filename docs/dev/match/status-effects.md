@@ -47,9 +47,22 @@ testadas, e ainda não lidas** pelo motor. `testPenalty`, `autoFail` e as `react
 
 Mapa reação ↔ peça (decisão 9 do plano): `default` = esquiva por reflexo + defesa padrão;
 `dodge` = esquiva por reflexo; `closedDodge` = reflexo + evasão; `escape`/`escapeGuard` = fuga;
-`closedEscape` = fuga + evasão; `repel` = aparo; `nothing` sempre. Domínios: esquiva →
-reflexo, evasão; defesa → defesa padrão, aparo; fuga precisa de movimento **e** esquiva (spec
-§5.4).
+`closedEscape` = fuga + evasão; `repel` = repelir; `nothing` sempre. Domínios (os conjuntos
+do diagrama de ações em `docs/dev/match/flows/_source/fluxos.excalidraw`, dono, 2026-11-25):
+esquiva → reflexo, evasão; defesa → defesa padrão; **repelir → ataque E defesa** (`needRepel`:
+travar qualquer um dos dois o proíbe, e a recusa nomeia o domínio travado — "não pode atacar" /
+"não pode defender"); fuga precisa de movimento **e** esquiva (spec §5.4).
+
+**Por que o repelir está em ataque e defesa (R1).** Duas leituras, juntas: (1) repelir é
+**atacar o ataque** — você acerta o golpe do oponente; (2) um ataque já declarado contra quem te
+ataca pode virar o repelir, à vontade do jogador e sem penalidade (`keepsQueuedIntent`,
+`sameBlowAsQueued`). Mesmo assim o repelir é **um teste só** (Repel), que recebe o que pesa no
+ataque e o que pesa na defesa — ver [Rolagens](#rolagens-fase-2), R4.
+
+**A reação padrão não é interseção (R2).** A defesa padrão (conjunto defesa) e a esquiva por
+reflexo (conjunto esquiva) são isoladas: cada uma no seu conjunto, cada uma com o seu teste. A
+**esquiva defensiva** (esquiva ∩ defesa) é **outra ação**, que ainda não existe no código — não é
+a reação padrão.
 
 **G1 (Tato, face equilíbrio):** prejudicado → ataque, defesa, esquiva e movimento recebem a
 desvantagem/número do próprio status; anulado → uma desvantagem nesses quatro. Declarado em
@@ -84,36 +97,58 @@ chama: o **resolvedor** (acerto do atacante; reações do alvo — `ResolveInput
 **sessão** (`deriveSpeeds`, `deriveSkills`) e nada mais. `Summarize` continua dono do **bloqueio**
 (`forbidden`); `RollEffectOf` **não lê** `forbidden`.
 
-**O `Test` descreve o teste, não como rola:** `{Skill, Domain, Reaction, MoveSpeed}`. Quais peças o
+**O `Test` descreve o teste, não como rola:** `{Skill, Domains, Reaction, MoveSpeed}` —
+`Domains` são os conjuntos em que o teste está (vazio = não é teste de conjunto; o repelir é o
+único em dois, `{attack, defense}`). Quais peças o
 alcançam (`scopeReaches`): escopo de **aptidão** (Debilitado) → a aptidão da perícia
 (`AptitudeOfSkill`: o conjunto Focus/WillPower/SelfKnowledge/Coa/Mop/Aop é espiritual, qualquer
-outra perícia é física, não há mental); escopo de **domínio** (Lesionado, Visão anulada, G1) → o
-domínio do teste; escopo de **sentido** → a perícia do sentido (`SenseOfSkill`; no Tato só a face
+outra perícia é física, não há mental); escopo de **domínio** (Lesionado, Visão anulada, G1) → um dos
+domínios do teste (uma vez por efeito, R4 abaixo); escopo de **sentido** → a perícia do sentido (`SenseOfSkill`; no Tato só a face
 **toque** — um teste de Tato declarado numa ação é lido como toque, provisório, spec §16.4 item
 38); escopo de **moveSpeed** (Lento). `reactionRestricted` com `disadvantage` soma um nível de
 viés quando a `Reaction` do teste é a da peça; `rolledOnly` faz a defesa padrão ser rolada.
 
-**Tabela domínio → teste** (decisão 3 do plano):
+**Tabela domínio → teste** (decisão 3 do plano, refeita pelos conjuntos do
+`fluxos.excalidraw`, 2026-11-25):
 
 | Domínio | Testes |
 |---|---|
-| ataque | o acerto (`hit`) |
-| defesa | a defesa padrão e o aparo (`repel`) |
+| ataque | o acerto (`hit`) e o repelir (`repel`) |
+| defesa | a defesa padrão e o repelir (`repel`) |
 | esquiva | o reflexo (esquiva padrão, `dodge`, `closedDodge` e o reflexo dos escapes) e a evasão |
 | movimento | `moveSpeed` (o componente de movimento e o segundo teste dos escapes) |
-| — | `actionSpeed` (Legerity) e o dano **não** são testes de domínio; a finta não tem total derivado e não recebe nada |
+| — | `actionSpeed` (Legerity) e o dano **não** são testes de domínio |
 
-O Debilitado pesa em **todo** teste da aptidão (acerto, reflexo, evasão, defesa, aparo,
+- **Repelir = ataque ∩ defesa, um teste só (R1).** O `Test` do Repel leva `Domains: {attack,
+  defense}` (`resolveRepel`).
+- **Escape = movimento ∩ esquiva, dois testes (R3).** Cada teste lê só o seu conjunto: o reflexo
+  lê a esquiva; o `moveSpeed`, o movimento. O Caído e a Guarda aberta continuam pesando nos dois
+  (são peças de reação, não de conjunto, e são dois status diferentes: somam). O escape defensivo
+  (`escapeGuard`) é o mesmo, mais a defesa padrão que ele mantém como rede (que lê a defesa).
+- **Um status pesa uma vez só no mesmo teste, pelos conjuntos (R4).** A lista de conjuntos de um
+  efeito (Visão anulada: ataque, defesa e esquiva; Tato no equilíbrio: os quatro; Lesionado: um
+  por conjunto lesionado) diz **até onde ele alcança**, não **quanto pesa**. `RollEffectOf` junta
+  as peças `testPenalty` de escopo de domínio **do mesmo efeito** que alcançam o teste e soma uma
+  vez a maior desvantagem e a maior penalidade entre elas. Efeitos diferentes continuam somando;
+  as peças de aptidão, sentido, `moveSpeed` e as de reação seguem como antes. Exemplos no Repel:
+  Visão anulada → 1 nível (não 2); Lesionado só no ataque → 1 nível; Lesionado no ataque e na
+  defesa → 1 nível; Visão anulada + Lesionado no ataque → 2 níveis (dois status); Tato no
+  equilíbrio com penalidade N → −N uma vez. Num teste de um conjunto só nada muda.
+- **Finta (R5).** O que pesa no ataque pesa na finta — mas a finta ainda não tem total derivado
+  (o motor não a resolve), então hoje não recebe nada. `TODO(finta)` em `turn_resolver.go`, ao
+  lado do `Test` do acerto.
+
+O Debilitado pesa em **todo** teste da aptidão (acerto, reflexo, evasão, defesa, repelir,
 `actionSpeed`, `moveSpeed` e `skills[]`). **`skills[]`** ganhou o total derivado
 (`RollCheck.Result`, decisão 5): `deriveSkills` o recalcula na chegada, a cada edição do mestre e a
 cada mudança de status, e nada o lê para um desfecho ainda (a corrente de testes lerá).
 
 **Escapes (provisório).** O Caído e a Guarda aberta põem desvantagem nos **dois** testes de **cada
 um** dos três escapes (o reflexo e o `moveSpeed`, ambos com `Reaction: escape`); o Caído também
-pesa na esquiva por reflexo e no aparo. É **provisório**, TODO até o redesenho do movimento: que o
+pesa na esquiva por reflexo e no repelir. É **provisório**, TODO até o redesenho do movimento: que o
 Caído "role" sem penalidade é só **um ponto possível** desse desenho, não regra (palavras do dono,
 spec §16.4 itens 33 e 37). O Caído **não** bloqueia nada; a Guarda aberta proíbe esquiva por
-reflexo e aparo e deixa a defesa padrão só rolada.
+reflexo e repelir e deixa a defesa padrão só rolada.
 
 **Falha automática.** `autoFail` por sentido (Atordoado, Inconsciente, Morto; sentido anulado) faz
 `Derive` devolver `Total 0`, `AutoFailed`, sem dados e sem crítico: **nada é rolado** e o teste não

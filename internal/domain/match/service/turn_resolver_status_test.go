@@ -120,6 +120,35 @@ func TestResolve_StatusEffectsWeighOnRolls(t *testing.T) {
 		}
 	})
 
+	t.Run("injured attack target repels with disadvantage", func(t *testing.T) {
+		// R1: o repelir está em ataque E defesa — o Lesionado só no ataque pesa nele.
+		repelWith := func(attempts action.RollAttempts, effects []statuseffect.Effect) (*service.TurnResolution, *action.Action) {
+			tn := attackTurn(actorID, targetID, []int{3, 3}, []int{1, 1}, &sword)
+			r := reactionOf(targetID, action.ReactRepel)
+			r.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: enum.Repel.String(), Attempts: attempts}}
+			withReaction(tn, r)
+			in := resolveInput(t, actorID, targetID, tn)
+			in.Effects = map[uuid.UUID][]statuseffect.Effect{targetID: effects}
+			return service.TurnResolver{}.Resolve(in), r
+		}
+		injured := []statuseffect.Effect{{Kind: statuseffect.KindInjured, Params: statuseffect.Params{
+			Injuries: map[statuseffect.Domain]statuseffect.InjuryLevel{statuseffect.DomainAttack: statuseffect.InjuryHurt},
+		}}}
+
+		res, r := repelWith(action.RollAttempts{Primary: []int{7, 4}}, injured)
+		want := service.DiceShortage{Ref: service.DiceRef{ActionID: r.GetID(), Field: action.FieldRepel}, Need: 1}
+		if len(res.DiceShort) != 1 || res.DiceShort[0] != want {
+			t.Fatalf("DiceShort = %+v, want %+v", res.DiceShort, want)
+		}
+
+		plain, _ := repelWith(action.RollAttempts{Primary: []int{7, 4}}, nil)
+		got, _ := repelWith(action.RollAttempts{Primary: []int{7, 4}, Extra: []int{1}}, injured)
+		// Desvantagem mantém os dois piores de [7 4 1]: 4 + 1 = 5, contra 7 + 4 = 11 sem status.
+		if d := onlyResult(t, plain).ReactionTotal - onlyResult(t, got).ReactionTotal; d != 6 {
+			t.Errorf("repel total dropped by %d, want 6 (11 → 5)", d)
+		}
+	})
+
 	t.Run("open guard default defense rolls", func(t *testing.T) {
 		// Acerto 19 passa a esquiva passiva (11); a defesa padrão, só rolada, pede os dados.
 		tn := attackTurn(actorID, targetID, []int{10, 9}, []int{1, 1}, &sword)

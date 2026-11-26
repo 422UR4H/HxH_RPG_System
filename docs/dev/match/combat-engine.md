@@ -96,10 +96,18 @@ aqui, o que o motor de combate precisa saber:
 - Quem testa tem os **efeitos de status** lidos por `statuseffect.RollEffectOf(effects, Test)`;
   `ResolveInput.Effects` os entrega ao resolvedor (acerto: os do **atacante**; reações: os do
   **alvo**) e a sessão os lê nas velocidades e em `skills[]`. É a quarta origem de viés.
-- **Domínio → teste** (decisão 3 do plano): ataque = o acerto; defesa = a defesa padrão e o aparo;
-  esquiva = o reflexo (padrão, `dodge`, `closedDodge`, escapes) e a evasão; movimento = o
-  `moveSpeed` (o componente de movimento e o segundo teste dos escapes). A velocidade de ação e o
-  dano **não** são testes de domínio; a finta não tem total derivado.
+- **Domínio → teste** (decisão 3 do plano, pelos conjuntos do `fluxos.excalidraw`): ataque = o
+  acerto; defesa = a defesa padrão; **repelir = ataque ∩ defesa, um teste só** (é atacar o
+  ataque, e o golpe que você ia dar contra quem te ataca pode virar o repelir sem penalidade;
+  travar qualquer um dos dois o proíbe); esquiva = o reflexo (padrão, `dodge`, `closedDodge`,
+  escapes) e a evasão; movimento = o `moveSpeed` (o componente de movimento e o segundo teste dos
+  escapes, que lê só o movimento — o reflexo do escape lê só a esquiva). A reação padrão **não** é
+  interseção: defesa e esquiva, cada uma no seu teste. A velocidade de ação e o dano **não** são
+  testes de domínio; a finta não tem total derivado (`TODO(finta)`: será do conjunto ataque).
+- **Um status pesa uma vez só no mesmo teste:** num teste em dois conjuntos (o Repel), um efeito
+  que alcança os dois (Visão anulada, Tato no equilíbrio, Lesionado) pesa uma vez, pela parte mais
+  forte; efeitos diferentes somam. Detalhe e exemplos em [`status-effects.md`](status-effects.md)
+  (*Rolagens*, R1–R5).
 - **Escape (provisório):** Caído e Guarda aberta põem desvantagem nos **dois** testes de cada
   escape. TODO até o redesenho do movimento; "rolar sem penalidade" é só um ponto possível dele
   (spec §16.4 itens 33 e 37), não regra.

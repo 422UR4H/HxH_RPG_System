@@ -469,7 +469,7 @@ Um efeito é composto de peças. Valem estas (as demais só são guardadas — [
 | não reage | `stupefied`, `stunned`, `unconscious`, `dead` | recusa toda reação, menos `nothing` |
 | domínio inutilizado | `paralyzed` (os `domains`), `stunned`/`unconscious`/`dead` (os quatro) | recusa ação/reação que usa o domínio |
 | sem deslocamento | `restrained`, `paralyzed` com `movement`, `stunned`/`unconscious`/`dead` | recusa a ação de mover e as fugas |
-| reação proibida | `restrained` (escape); `airborne` (esquiva por reflexo, escape); `openGuard` (esquiva por reflexo, aparo) | recusa a reação |
+| reação proibida | `restrained` (escape); `airborne` (esquiva por reflexo, escape); `openGuard` (esquiva por reflexo, repelir) | recusa a reação |
 | aviso de domínio | `injured` com `disabled` | **não bloqueia**; vira `statusNotes` |
 | conduta | `compelled` | **não bloqueia**; vira `statusNotes` |
 
@@ -491,7 +491,7 @@ recusados por "não age".
 | `closedDodge` | esquiva por reflexo + evasão | |
 | `escape`, `escapeGuard` | movimento **e** esquiva; sem "sem deslocamento" | |
 | `closedEscape` | movimento e esquiva + evasão; sem "sem deslocamento" | |
-| `repel` | aparo (domínio defesa) | |
+| `repel` | repelir: domínio ataque **e** domínio defesa | travar qualquer um dos dois recusa (a mensagem nomeia o travado: "não pode atacar" / "não pode defender"). O repelir está nos dois porque é atacar o ataque, e porque o golpe que você ia dar contra quem te ataca pode virar o repelir sem penalidade |
 
 Quando a defesa está inutilizada ou proibida, uma reação `dodge`/`closedDodge`/`escapeGuard`
 também perde a defesa padrão de reserva. Isso não aparece no fio.
@@ -505,15 +505,22 @@ que cada efeito faz a qual teste, para a UI poder explicar:
 
 | Efeito | O que faz |
 |---|---|
-| `injured` (`hurt` ou `disabled`) | 1 desvantagem em **todo** teste do domínio ferido. |
+| `injured` (`hurt` ou `disabled`) | 1 desvantagem em **todo** teste do domínio ferido (o repelir é teste de ataque **e** de defesa). |
 | `slowed` | penalidade (−`penalty`) na velocidade de movimento, inclusive a de uma fuga. |
 | `sense` **prejudicado** | a `disadvantage` (1 nível) e a `penalty` nos testes da perícia do sentido. No Tato só a face **toque** pesa: um teste de Tato declarado numa ação é lido como toque (provisório, spec §16.4 item 38). |
 | `sense` **anulado** | **falha automática** nos testes da perícia do sentido (não rola, `total` 0, `autoFailed`). A **Visão** anulada põe também 1 desvantagem no acerto, na defesa e na esquiva. |
 | `sense` Tato com a face `balance` | a desvantagem/penalidade (anulado: 1 desvantagem) pesa em **todo** teste de ataque, defesa, esquiva e movimento. Não há teste de equilíbrio automático ([§10](#10-o-que-ainda-não-existe)). |
-| `weakened` | `disadvantage` e `penalty` em **toda** perícia da aptidão: acerto, esquiva por reflexo, evasão, defesa, aparo, velocidade de ação, de movimento e `skills[]`. As perícias do conjunto espiritual (Focus, WillPower, SelfKnowledge, Coa, Mop, Aop) são espirituais; **toda outra perícia é física**; não há perícia mental. |
+| `weakened` | `disadvantage` e `penalty` em **toda** perícia da aptidão: acerto, esquiva por reflexo, evasão, defesa, repelir, velocidade de ação, de movimento e `skills[]`. As perícias do conjunto espiritual (Focus, WillPower, SelfKnowledge, Coa, Mop, Aop) são espirituais; **toda outra perícia é física**; não há perícia mental. |
 | `stunned`, `unconscious`, `dead` | falha automática em **todo** teste de perícia de sentido (os cinco). |
-| `prone` | 1 desvantagem na esquiva por reflexo e no aparo, e nos **dois** testes (reflexo e movimento) dos três escapes. **Provisório** (TODO até o redesenho do movimento: a regra por tipo de escape — "rolar" talvez sem penalidade — é só um ponto possível desse desenho, não regra). |
-| `openGuard` | **sem** esquiva por reflexo e **sem** aparo (proibidos); a defesa padrão passa a ser **só rolada** (nunca passiva); 1 desvantagem nos dois testes dos três escapes. |
+| `prone` | 1 desvantagem na esquiva por reflexo e no repelir, e nos **dois** testes (reflexo e movimento) dos três escapes. **Provisório** (TODO até o redesenho do movimento: a regra por tipo de escape — "rolar" talvez sem penalidade — é só um ponto possível desse desenho, não regra). |
+| `openGuard` | **sem** esquiva por reflexo e **sem** repelir (proibidos); a defesa padrão passa a ser **só rolada** (nunca passiva); 1 desvantagem nos dois testes dos três escapes. |
+
+**Um status pesa uma vez só no mesmo teste.** O repelir é **um teste só** em dois domínios
+(ataque e defesa) e recebe o que pesa em cada um; mas um efeito que alcança os dois (a Visão
+anulada, o Tato no equilíbrio, um `injured` no ataque e na defesa) pesa **uma vez**, pela parte
+mais forte — a Visão anulada dá 1 desvantagem no repelir, não 2. Efeitos diferentes somam (Visão
+anulada + `injured` no ataque = 2). Num teste de um domínio só nada muda. A finta não tem total
+derivado e não recebe nada (quando tiver, será teste de ataque).
 
 Como entram: cada desvantagem é **um nível** de viés, que se soma aos do mestre e do sistema (cada
 nível cancela um do sinal oposto; teto de 10). A penalidade soma ao modificador. A falha

@@ -162,7 +162,7 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 		// A Guarda aberta deixa a defesa padrão só rolada (RolledOnly): sem dados, ela pede o
 		// conjunto pela falta abaixo, e a sessão o tira.
 		Status: StatusRollOf(in.Effects, statuseffect.Test{
-			Skill: enum.Defense, Domain: statuseffect.DomainDefense, Reaction: statuseffect.ReactionDefense,
+			Skill: enum.Defense, Domains: []statuseffect.Domain{statuseffect.DomainDefense}, Reaction: statuseffect.ReactionDefense,
 		}),
 	})
 	// "defense" numa reação que mantém a padrão endereça a DefaultDefense, que a sessão cria
@@ -252,7 +252,7 @@ func deriveReflex(in ReactionInput, calc RollCalculator) RollOutcome {
 // reflexTest é como os status leem o reflexo: a esquiva por reflexo, ou o escape quando a
 // reação desloca (os três escapes leem a restrição "escape", não a "reflexDodge").
 func reflexTest(k action.ReactionKind) statuseffect.Test {
-	t := statuseffect.Test{Skill: enum.Reflex, Domain: statuseffect.DomainDodge, Reaction: statuseffect.ReactionReflexDodge}
+	t := statuseffect.Test{Skill: enum.Reflex, Domains: []statuseffect.Domain{statuseffect.DomainDodge}, Reaction: statuseffect.ReactionReflexDodge}
 	if k.Displaces() {
 		t.Reaction = statuseffect.ReactionEscape
 	}
@@ -288,7 +288,7 @@ func deriveEvasion(in ReactionInput, calc RollCalculator) RollOutcome {
 		Dimension: match.DimDodge,
 		AgainstID: &in.AttackerID,
 		Status: StatusRollOf(in.Effects, statuseffect.Test{
-			Skill: enum.Evasion, Domain: statuseffect.DomainDodge, Reaction: statuseffect.ReactionEvasion,
+			Skill: enum.Evasion, Domains: []statuseffect.Domain{statuseffect.DomainDodge}, Reaction: statuseffect.ReactionEvasion,
 		}),
 	})
 }
@@ -321,8 +321,12 @@ func resolveRepel(in ReactionInput, calc RollCalculator) ReactionOutcome {
 		SkillValue: skillValueOf(in.Target, enum.Repel.String()),
 		Condition:  cond,
 		AgainstID:  &in.AttackerID,
+		// O repelir está em ataque E defesa (R1): é atacar o ataque, e o golpe que você ia dar
+		// contra quem te ataca pode virar o repelir sem penalidade. É um teste só — recebe o que
+		// pesa no ataque e o que pesa na defesa, e um mesmo status pesa uma vez (R4, RollEffectOf).
 		Status: StatusRollOf(in.Effects, statuseffect.Test{
-			Skill: enum.Repel, Domain: statuseffect.DomainDefense, Reaction: statuseffect.ReactionRepel,
+			Skill: enum.Repel, Domains: []statuseffect.Domain{statuseffect.DomainAttack, statuseffect.DomainDefense},
+			Reaction: statuseffect.ReactionRepel,
 		}),
 	})
 	noteReactionShortage(&out, in, DiceRef{Field: action.FieldRepel}, out.Repel)

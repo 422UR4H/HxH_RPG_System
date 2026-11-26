@@ -105,7 +105,17 @@ func TestStatusRefusal(t *testing.T) {
 			effects: []statuseffect.Effect{paralyzedIn(c, statuseffect.DomainAttack)},
 			probes: []probe{
 				{"attack", attackBy(c, other), true},
+				// R1: o repelir está em ataque E defesa — travar o ataque também o proíbe.
+				{"repel", react(action.ReactRepel), true},
 				{"move", moveBy(c), false},
+			},
+		},
+		{
+			name: "paralyzed movement", want: "paralisado",
+			effects: []statuseffect.Effect{paralyzedIn(c, statuseffect.DomainMovement)},
+			probes: []probe{
+				{"repel", react(action.ReactRepel), false},
+				{"escape needs movement", react(action.ReactEscape), true},
 			},
 		},
 		{
