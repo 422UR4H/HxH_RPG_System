@@ -13,7 +13,7 @@ import (
 // forcedSheet builds a fresh sheet and raises its Force through real XP, so the test reads
 // whatever the character sheet's own skill math actually produces instead of asserting a
 // number this test does not own. A round1-review fix: TestRawDamageAddsTheForce proves the
-// FORMULA (an int in, an int out) but never exercises actorForce, skillValueOf or in.Sheets —
+// FORMULA (an int in, an int out) but never exercises actorDamageSkill, skillValueOf or in.Sheets —
 // the real link the spec asked for. This file and force_repercussion_test.go close that gap.
 func forcedSheet(t *testing.T) (*csSheet.CharacterSheet, int) {
 	t.Helper()
@@ -39,7 +39,7 @@ func forcedSheet(t *testing.T) (*csSheet.CharacterSheet, int) {
 	return cs, force
 }
 
-// TestActorForce_ReadsTheAttackersSheet proves actorForce is not a dead wire: given a real
+// TestActorForce_ReadsTheAttackersSheet proves actorDamageSkill is not a dead wire: given a real
 // sheet with a non-zero Force, in.Sheets, and the actor's own ID, it returns exactly what
 // GetValueForTestOfSkill(Force) reads off that sheet — not a hardcoded, decoupled number.
 func TestActorForce_ReadsTheAttackersSheet(t *testing.T) {

@@ -108,6 +108,7 @@ status faz está em [Efeitos de Status](efeitos-de-status.md); aqui está só co
 ### Editar e tirar
 
 - O mestre edita e tira o status pelo próprio status.
+- Quando o mestre passa a mesa do turno disputado para o turno livre (fim da batalha), a Guarda aberta sai sozinha de todos os personagens.
 - **Tirar libera quem estava bloqueado** (Atordoado e os parecidos), se ele quiser liberar antes
   da hora.
 - **Desfazer no mesmo turno:** tirar um status no mesmo turno aberto em que ele foi aplicado é

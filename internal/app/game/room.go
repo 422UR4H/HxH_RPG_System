@@ -1164,7 +1164,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			modeScene, modeRound = snapshotSceneAndRound(modeScene, modeRound)
 			r.clearClockMergeLocked()
 			// Fim da batalha: do turno disputado para o livre, a Guarda aberta sai (spec §10).
-			// Na mesma seção crítica da troca; anunciado depois do round_mode_changed.
+			// Na mesma seção crítica da troca; sem garantia de ordem entre o round_mode_changed (pista de difusão) e o status_effects_updated (pista direta).
 			if err == nil && oldMode == enum.Race && newMode == enum.Free {
 				battleEnd, battleEnded = r.endBattleStatusEffectsLocked(session)
 			}

@@ -980,9 +980,9 @@ O regime que a mesa recebe de volta é **lido da sessão**, não ecoado do pedid
 [`bars_updated`](#bars_updated) (por destinatário).
 
 **Fim da batalha.** De `Race` para `Free` (só essa transição), o servidor tira toda Guarda aberta
-(`openGuard`) da mesa e, depois do `round_mode_changed` e do `bars_updated`, manda o
-`status_effects_updated` de cada personagem que a perdeu, por destinatário (pista direta: sem
-garantia de ordem com o `round_mode_changed`). Não é um desfazer. Com turno aberto, a saída vale na
+(`openGuard`) da mesa e manda o `status_effects_updated` de cada personagem que a perdeu, por
+destinatário (pista direta). Não há garantia de ordem entre o `round_mode_changed` (pista de
+difusão) e o `status_effects_updated` (pista direta). Não é um desfazer. Com turno aberto, a saída vale na
 hora e é gravada com o fechamento. Ver
 [match-status-effects.md, "Fim da batalha"](match-status-effects.md#fim-da-batalha-guarda-aberta-sai).
 

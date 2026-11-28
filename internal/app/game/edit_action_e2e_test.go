@@ -202,11 +202,20 @@ func TestEditActionRefusesDamageSkill(t *testing.T) {
 	if code != "invalid_payload" {
 		t.Errorf("error code = %q, want invalid_payload", code)
 	}
-	time.Sleep(100 * time.Millisecond)
-	if n := masterMsgs.count(game.MsgTypeActionEdited); n != editedBefore {
-		t.Errorf("action_edited arrived %d time(s) after a refused edit", n-editedBefore)
+	// Barreira: um pedido válido depois do recusado; a conexão é sequencial, então quando o
+	// action_edited dele chega, qualquer efeito do recusado já teria chegado.
+	sendWS(t, master, "edit_action", map[string]any{
+		"actionId":   queued.ActionID.String(),
+		"conditions": []map[string]any{{"field": "hit", "modifier": 5}},
+	})
+	if !awaitCount(masterMsgs, game.MsgTypeActionEdited, editedBefore+1, 2*time.Second) {
+		t.Fatal("the follow-up edit never landed")
 	}
-	if got := lastActionQueued(t, masterMsgs); got.DamageSkill != "Force" || len(got.Conditions) != 0 {
-		t.Errorf("action_queued = %+v, want Force and no condition", got)
+	if n := masterMsgs.count(game.MsgTypeActionEdited); n != editedBefore+1 {
+		t.Errorf("action_edited arrived %d time(s), want only the follow-up's", n-editedBefore)
+	}
+	got := lastActionQueued(t, masterMsgs)
+	if got.DamageSkill != "Force" || len(got.Conditions) != 1 || got.Conditions[0].Modifier != 5 {
+		t.Errorf("action_queued = %+v, want Force and only the follow-up's +5 (not the refused +3)", got)
 	}
 }

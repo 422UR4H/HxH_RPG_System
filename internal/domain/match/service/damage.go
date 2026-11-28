@@ -31,8 +31,8 @@ func WeaponDice(name *enum.WeaponName, cat *item.WeaponsManager) ([]enum.DieSide
 // RawDamage is the weapon's rolled dice plus its flat damage bonus plus the attacker's Force.
 //
 // Force is the skill that measures damage, and it is NOT selectable: the weapon is what deals
-// the damage, and the player does not choose which skill measures it. Swapping Force for Grab
-// is the master's prerogative and belongs to their editing surface, in Phase 8.
+// the damage, and the player does not choose which skill measures it. The master does not swap
+// it either: see actorDamageSkill.
 //
 // The hit margin deliberately does NOT enter here. Product owner: "it will not add into the
 // damage, at least not for now, because this system is already very punishing." It is the

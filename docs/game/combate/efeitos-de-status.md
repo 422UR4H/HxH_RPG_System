@@ -76,7 +76,7 @@ registra o número é o mestre.
 
 **Guarda** (a posição em que o personagem está)
 
-- **Caído** — no chão: só rola ou desliza para se mover, e tem desvantagem na esquiva por reflexo e no repelir.
+- **Caído** — no chão: tem desvantagem na esquiva por reflexo, no repelir e nos dois testes do escape (provisório, até o movimento ser redesenhado).
 - **No ar** — não muda a trajetória; sem esquiva por reflexo e sem escapar.
 - **Guarda aberta** — descuidado: sem esquiva por reflexo, sem repelir, a defesa só vale rolada e o escape tem desvantagem. **Sai sozinha quando a batalha acaba**, isto é, quando o mestre tira a mesa do turno disputado e a põe no turno livre. O mestre também pode tirá-la antes.
 

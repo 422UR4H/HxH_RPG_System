@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 
--- As habilidades de Força Push e Carry viraram Force e Charge (Forçar e Carga). O nome da habilidade
+-- As perícias de Força Push e Carry viraram Force e Charge (Forçar e Carga). O nome da habilidade
 -- vive em: character_sheets.push_exp / carry_exp (colunas renomeadas, o XP fica onde está) e dentro
 -- dos JSONB do histórico, sob as chaves SkillName / skillName / DamageSkill / damageSkill:
 -- actions (speed, skills, move, attack, defense, dodge, feint, trigger, interact, default_defense,
