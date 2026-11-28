@@ -813,6 +813,19 @@ automática custa caro nela — por isso poucas rolagens por round).
     já está decidido (`2026-11-15-testes-brainstorm-notas.md`, P1); na corrente de testes de uma
     action, será decidido lá.
 
+39. **Repelir é a interseção ataque ∩ defesa** [2026-11-25]: as duas leituras valem (atacar o ataque;
+    o golpe que vira o repelir), com **um teste só**. A defesa padrão e a esquiva por reflexo não são
+    interseção; a esquiva defensiva é outra ação, ainda por vir.
+40. **Um status pesa uma vez no teste**, mesmo que alcance vários conjuntos da interseção (diz só a
+    abrangência dele). **Status diferentes somam** (Caído + Guarda aberta no escape = 2 níveis)
+    [2026-11-25].
+41. **No escape, cada um dos dois testes lê só o seu conjunto**: o reflexo lê a esquiva; o movimento,
+    o movimento [2026-11-25].
+42. **O que pesa no ataque pesa na finta** [2026-11-25] (TODO no código: a finta ainda não tem
+    resolução).
+43. **`hpChange` no lugar de `damage`** em `character_hp_changed`; o front decide pelo sinal entre
+    dano recebido e cura [2026-11-25] (TODO para a sessão dos cards).
+
 ### 16.5 De quem implementou (o dono foi informado)
 
 - Reaplicar um status que o personagem já tem é recusado; o mestre edita o existente. Vários
@@ -827,6 +840,26 @@ automática custa caro nela — por isso poucas rolagens por round).
   recuperação por Tenacidade).
 - O resto (campos obrigatórios, mapeamento reação ↔ peça, efeito na fila e nas reações
   pendentes, limites de texto) está no plano, "Decisions this plan makes".
+
+### 16.6 De quem implementou — fase 2 (PR #116; o dono foi informado)
+
+- Até **10 níveis de viés** por teste (teto técnico).
+- **Conjunto → teste:** ataque = acerto e repelir; defesa = defesa padrão e repelir; esquiva = reflexo
+  e evasão (também a esquiva do escape); movimento = velocidade do movimento. A velocidade da ação e
+  o dano não são testes de conjunto. "Pesar uma vez" pega, entre as partes de um mesmo status que
+  alcançam o teste, a maior desvantagem e a maior penalidade.
+- **Debilitado** pesa em todo teste das perícias da Aptidão, inclusive a velocidade da ação, a do
+  movimento e as perícias avulsas. Foco, Força de Vontade, Autoconhecimento, CoA, MOP e AOP são
+  espirituais; as demais, físicas; a mental não tem perícias.
+- **"Falha sozinho"**: não rola, total 0, marcado como falha automática, sem crítico.
+- **"Morre"** é por alvo do golpe (não soma golpes do turno) e só o mestre recebe, aberto ou fechado.
+- **O Morto não traz o Caído**; o mestre não o aplica à mão ("O Morto entra só pela regra.").
+- A marca de morto recebe o **horário real do encerramento**; quem já estava morto mantém a data
+  anterior.
+- O HP da remoção do Morto: fora de turno, na mesma transação do status; dentro do turno, com o
+  fechamento.
+- O histórico ainda não traz crítico, "morre" nem falha automática; a morte aparece no histórico
+  pelo evento do status Morto.
 
 ## 17. O que vem depois e molda o modelo
 

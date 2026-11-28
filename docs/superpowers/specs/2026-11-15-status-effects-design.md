@@ -834,6 +834,19 @@ automatic roll is costly in it — hence few rolls per round).
     requested test this is already decided (`2026-11-15-testes-brainstorm-notas.md`, P1); for an
     action's test chain, it will be decided there.
 
+39. **Repel is the intersection attack ∩ defense** [2026-11-25]: both readings hold (attacking the
+    attack; the blow that becomes the repel), with **a single test**. Default defense and reflex
+    dodge are not intersections; the defensive dodge is another action, still to come.
+40. **A status weighs once on a test**, even if it reaches several sets of the intersection (it only
+    says its reach). **Different statuses add up** (Prone + Open guard on the escape = 2 levels)
+    [2026-11-25].
+41. **In the escape, each of the two tests reads only its own set**: reflex reads dodge; movement
+    reads movement [2026-11-25].
+42. **What weighs on attack weighs on the feint** [2026-11-25] (TODO in code: the feint has no
+    resolution yet).
+43. **`hpChange` instead of `damage`** in `character_hp_changed`; the front tells damage taken from
+    healing by the sign [2026-11-25] (TODO for the cards session).
+
 ### 16.5 From the implementer (the owner was informed)
 
 - Re-applying a status the character already has is refused; the master edits the existing one.
@@ -847,6 +860,26 @@ automatic roll is costly in it — hence few rolls per round).
   recovery).
 - The rest (required fields, reaction ↔ piece mapping, effect on the queue and pending reactions,
   text limits) is in the plan, "Decisions this plan makes".
+
+### 16.6 From the implementer — phase 2 (PR #116; the owner was informed)
+
+- Up to **10 bias levels** per test (technical ceiling).
+- **Set → test:** attack = hit and repel; defense = default defense and repel; dodge = reflex and
+  evasion (also the escape's dodge); movement = movement speed. Action speed and damage are not set
+  tests. "Weigh once" takes, among the parts of one status that reach the test, the largest
+  disadvantage and the largest penalty.
+- **Weakened** weighs on every test of the Ability's skills, including action speed, movement speed
+  and standalone skills. Focus, Willpower, SelfKnowledge, CoA, MOP and AOP are spiritual; the rest,
+  physical; the mental Ability has no skills.
+- **"Fails by itself"**: not rolled, total 0, marked as auto-failed, no critical.
+- **"Dies"** is per target of the blow (does not add up the turn's blows) and only the master
+  receives it, open or closed.
+- **Dead does not bring Prone**; the master cannot apply it by hand ("O Morto entra só pela regra.").
+- The dead mark gets the **real end-of-match time**; whoever was already dead keeps the earlier date.
+- The HP on removing Dead: outside a turn, in the same transaction as the status; inside a turn, with
+  the closing.
+- The history does not yet carry critical, "dies" or auto-fail; death shows in the history through
+  the Dead status event.
 
 ## 17. What comes next and shapes the model
 
