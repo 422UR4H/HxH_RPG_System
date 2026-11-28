@@ -34,9 +34,9 @@ Cada perícia física pertence a um atributo físico, primário ou secundário. 
 
 | Perícia | Na ficha | Descrição |
 |---|---|---|
-| Empurrão | Push | Força para empurrar objetos ou oponentes |
+| Forçar | Force | Empurrar, puxar, arrombar ou pressionar: a força aplicada contra algo ou alguém |
 | Agarrar | Grab | Capacidade de segurar e imobilizar |
-| Carregar | Carry | Peso máximo que pode ser transportado |
+| Carga | Charge | O peso que o personagem carrega e o embalo que acumula: quem carrega muito ou embala demais não para num instante |
 
 #### Agilidade (primário)
 
@@ -95,7 +95,7 @@ Cada perícia física pertence a um atributo físico, primário ou secundário. 
 | Perícia | Na ficha | Descrição |
 |---|---|---|
 | Foco | Focus | Atenção sustentada em qualquer tarefa: numa luta, num estudo ou ao canalizar o Nen |
-| Força de Vontade | WillPower | Perseverança e determinação para seguir em frente quando tudo pede para parar |
+| Força de Vontade | WillPower | Perseverança e determinação para seguir em frente quando tudo pede para parar; também a vontade de lutar contra quem é — ou parece — mais forte, sem assumir a própria pior condição (é o que a Biske cobra do Killua) |
 | Autoconhecimento | SelfKnowledge | Compreensão de si mesmo e do próprio Nen |
 
 #### Nen da Consciência
@@ -129,3 +129,5 @@ Quando uma perícia recebe experiência, ela sobe para o atributo da perícia, p
 >   somado ao valor de teste (`nível da conjunta + poder do atributo + buff da conjunta`); na
 >   cascata, a experiência é multiplicada pelo número de perícias comuns da conjunta antes de
 >   seguir para a aptidão.
+>
+> - TODO (golpe carregado e investida): fora do texto do jogador até o spec dos testes. Carga mede o golpe carregado e o acúmulo de velocidade além da Aceleração (§12 do spec de efeitos de status).

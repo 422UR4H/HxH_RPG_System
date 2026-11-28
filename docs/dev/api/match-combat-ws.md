@@ -181,7 +181,7 @@ Se `reactToId` for não-zero, a mensagem é roteada internamente como
     "attack": {
       "weapon": "Sword",
       "hit": { "skillName": "Accuracy" },
-      "damage": { "skillName": "Push" },
+      "damage": { "skillName": "Force" },
       "charge": { "skillName": "Energy" }
     },
     "defense": { "weapon": "Sword", "rollCheck": { "skillName": "Defense" } },
@@ -1275,7 +1275,7 @@ conectado, a mensagem simplesmente não é entregue a ninguém.
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
-        "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+        "damage": { "skillName": "Force", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
         "relativeVelocity": 0
       }
     }
@@ -1593,7 +1593,7 @@ ver a ⚠️ de ordem mais abaixo.
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
-        "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+        "damage": { "skillName": "Force", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
         "relativeVelocity": 0
       }
     }
@@ -1627,7 +1627,7 @@ presente (o dono vê tudo do próprio ator, `Viewer.SeesAllOf`):
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy" },
-        "damage": { "skillName": "Push" },
+        "damage": { "skillName": "Force" },
         "relativeVelocity": 0
       }
     }
@@ -1660,7 +1660,7 @@ permanente, `ProjectAction` sempre zera `Trigger` para quem não é dono nem mes
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy" },
-        "damage": { "skillName": "Push" },
+        "damage": { "skillName": "Force" },
         "relativeVelocity": 0
       }
     }
@@ -2482,7 +2482,7 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
         "attack": {
           "weapon": "Sword",
           "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
-          "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+          "damage": { "skillName": "Force", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
           "relativeVelocity": 0
         }
       },
@@ -2525,7 +2525,7 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
           "attack": {
             "weapon": "Sword",
             "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
-            "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+            "damage": { "skillName": "Force", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
             "relativeVelocity": 0
           }
         }
@@ -2557,7 +2557,7 @@ presente com a versão em `actionwire.Declaration` da mesma entrada:
           "actorId": "11111111-1111-4111-8111-111111111111",
           "targetId": ["22222222-2222-4222-8222-222222222222"],
           "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity" } },
-          "attack": { "weapon": "Sword", "hit": { "skillName": "Accuracy" }, "damage": { "skillName": "Push" }, "relativeVelocity": 0 }
+          "attack": { "weapon": "Sword", "hit": { "skillName": "Accuracy" }, "damage": { "skillName": "Force" }, "relativeVelocity": 0 }
         }
       }
     ]

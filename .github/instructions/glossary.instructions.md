@@ -21,6 +21,8 @@ Use this glossary for consistent terminology in game documentation.
 | Flame / Conscience | Nen da Chama / Nen da Consciência |
 | Quickness | Rapidez (perícia) |
 | Sneak | Deslizar (perícia) |
+| Force | Forçar (perícia) |
+| Charge | Carga (perícia) |
 | Coa / Mop / Aop | Controle de Aura (CoA) / MOP / AOP |
 | Skill | Perícia |
 | Proficiency | Proficiência (armas) |

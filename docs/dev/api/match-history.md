@@ -112,7 +112,7 @@ renderiza os cards de ação dentro do escopo de cada cena. Cada round carrega t
                 "attack": {
                   "weapon": "Fist",
                   "hit": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 20 },
-                  "damage": { "skillName": "Push", "skillValue": 10, "attempts": { "primary": [4] }, "result": 10 },
+                  "damage": { "skillName": "Force", "skillValue": 10, "attempts": { "primary": [4] }, "result": 10 },
                   "relativeVelocity": 0
                 }
               },
@@ -302,7 +302,7 @@ Notas sobre `resolution`:
 - `damageSkill` é a perícia que mediu o dano: sempre `Force` hoje (a Força mede o dano; o mestre
   não troca mais). Pública, como `rawDamage`. **Ausente** em turno sem ataque e em turnos gravados
   antes da Fase 8. Turnos antigos, de quando o mestre podia trocar a perícia, podem dizer `Grab`
-  ou `"None"` (só a arma): o histórico devolve o que foi gravado.
+  ou `"None"` (só a arma): o histórico devolve o que foi gravado. Antes de 2026-11-27 a perícia de Força se chamava `Push` (e `Carry` a de carga); a migração `20261127000000_rename_strength_skills` renomeou os valores gravados, então um turno antigo que dizia `Push` hoje diz `Force`.
 - `walls[]` — `{ wallId, kind, effectiveDamage, failure? }`: o que o turno fez a cada parede que
   mirou (`kind` `attack`: o dano depois da resistência; `interact`: `failure` quando nada mudou —
   `locked`, `noRoll`, `notApplicable`). Sem `hp`: a vida da parede mora nas tabelas do mapa, não no

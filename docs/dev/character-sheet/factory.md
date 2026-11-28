@@ -418,7 +418,7 @@ Cada grupo é vinculado a um atributo (primário ou intermediário):
 | Atributo | Perícias |
 |----------|----------|
 | Resistance | Vitality, Energy, Defense |
-| Strength | Push, Grab, Carry |
+| Strength | Force, Grab, Charge |
 | Agility | Quickness, Accelerate, Brake |
 | Celerity | Legerity, Repel, Feint |
 | Flexibility | Acrobatics, Evasion, Sneak |

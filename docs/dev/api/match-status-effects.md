@@ -297,7 +297,7 @@ gravada (com o turno aberto, no fechamento dele). Depois do fechamento não há 
 voltam **para o mesmo lugar da fila** (a ordem de chegada delas, que desempata a fila: empates
 incluídos, contra as que chegaram antes e depois — também depois do cancelamento), com o **mesmo
 id**, os mesmos dados já rolados, as **edições do mestre** que o cancelamento tinha descartado
-(condições, `damageSkill`) e as **velocidades exatamente como estavam no instante antes do
+(condições; `damageSkill` só existe em linhas antigas, de antes da Fase 8) e as **velocidades exatamente como estavam no instante antes do
 cancelamento** — a editada pelo mestre inclusive. Não são derivadas de novo: um turno que fechou
 desde o enqueue pode ter mudado os modificadores do personagem, e a ação voltaria noutro lugar. O servidor **revalida** cada uma contra o estado
 de agora e recusa, com motivo, a que não cabe mais: outro status ainda a recusa; uma ação com
