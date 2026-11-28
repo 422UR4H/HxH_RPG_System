@@ -34,7 +34,7 @@ type expInputs struct {
 	Tact, Taste                  int // Sense-based (continued)
 
 	// Physical skills via MiddleAttribute (lenAttrs=2): floor(groupSum/2)*3
-	Push, Grab, Carry         int // Strength = Resistance+Agility
+	Force, Grab, Charge       int // Strength = Resistance+Agility
 	Legerity, Repel, Feint    int // Celerity  = Agility+Flexibility
 	Reflex, Accuracy, Stealth int // Dexterity = Flexibility+Sense
 	Heal, Breath, Tenacity    int // Constitution = Sense+Resistance
@@ -59,7 +59,7 @@ func expPointsFormula(e expInputs) int {
 		(e.Quickness+e.Accelerate+e.Brake)*2 +
 		(e.Acrobatics+e.Evasion+e.Sneak)*2 +
 		(e.Vision+e.Hearing+e.Smell+e.Tact+e.Taste)*2 +
-		((e.Push+e.Grab+e.Carry)/2)*3 +
+		((e.Force+e.Grab+e.Charge)/2)*3 +
 		((e.Legerity+e.Repel+e.Feint)/2)*3 +
 		((e.Reflex+e.Accuracy+e.Stealth)/2)*3 +
 		((e.Heal+e.Breath+e.Tenacity)/2)*3 +
@@ -89,7 +89,7 @@ func applyExpToSheet(t *testing.T, cs *sheet.CharacterSheet, e expInputs) {
 
 	for name, exp := range map[enum.SkillName]int{
 		enum.Vitality: e.Vitality, enum.Energy: e.Energy, enum.Defense: e.Defense,
-		enum.Push: e.Push, enum.Grab: e.Grab, enum.Carry: e.Carry,
+		enum.Force: e.Force, enum.Grab: e.Grab, enum.Charge: e.Charge,
 		enum.Quickness: e.Quickness, enum.Accelerate: e.Accelerate, enum.Brake: e.Brake,
 		enum.Legerity: e.Legerity, enum.Repel: e.Repel, enum.Feint: e.Feint,
 		enum.Acrobatics: e.Acrobatics, enum.Evasion: e.Evasion, enum.Sneak: e.Sneak,
@@ -191,21 +191,21 @@ func TestExpPointsFormula_AllPrimaryAttrGroups_FactorTwo(t *testing.T) {
 
 func TestExpPointsFormula_MiddleAttrGroup_EvenTotal(t *testing.T) {
 	cs := buildTestSheet(t)
-	e := expInputs{Push: 10, Grab: 20, Carry: 30} // T=60 → floor(60/2)*3 = 90
+	e := expInputs{Force: 10, Grab: 20, Charge: 30} // T=60 → floor(60/2)*3 = 90
 	applyExpToSheet(t, cs, e)
 	assertExpPoints(t, cs, e)
 }
 
 func TestExpPointsFormula_MiddleAttrGroup_OddTotal(t *testing.T) {
 	cs := buildTestSheet(t)
-	e := expInputs{Push: 1, Grab: 2, Carry: 0} // T=3 → floor(3/2)*3 = 3
+	e := expInputs{Force: 1, Grab: 2, Charge: 0} // T=3 → floor(3/2)*3 = 3
 	applyExpToSheet(t, cs, e)
 	assertExpPoints(t, cs, e)
 }
 
 func TestExpPointsFormula_MiddleAttrGroup_SingleOdd(t *testing.T) {
 	cs := buildTestSheet(t)
-	e := expInputs{Push: 5} // T=5 → floor(5/2)*3 = 6
+	e := expInputs{Force: 5} // T=5 → floor(5/2)*3 = 6
 	applyExpToSheet(t, cs, e)
 	assertExpPoints(t, cs, e)
 }
@@ -213,7 +213,7 @@ func TestExpPointsFormula_MiddleAttrGroup_SingleOdd(t *testing.T) {
 func TestExpPointsFormula_AllMiddleAttrGroups(t *testing.T) {
 	cs := buildTestSheet(t)
 	e := expInputs{
-		Push: 100, Grab: 100, Carry: 100, // Strength
+		Force: 100, Grab: 100, Charge: 100, // Strength
 		Legerity: 100, Repel: 100, Feint: 100, // Celerity
 		Reflex: 100, Accuracy: 100, Stealth: 100, // Dexterity
 		Heal: 100, Breath: 100, Tenacity: 100, // Constitution
@@ -256,7 +256,7 @@ func TestExpPointsFormula_AllTypes_MatchesDomainCascade(t *testing.T) {
 		Acrobatics: 110, Evasion: 85, Sneak: 65,
 		Vision: 130, Hearing: 100, Smell: 75, Tact: 50, Taste: 40,
 
-		Push: 180, Grab: 160, Carry: 140,
+		Force: 180, Grab: 160, Charge: 140,
 		Legerity: 170, Repel: 150, Feint: 130,
 		Reflex: 190, Accuracy: 170, Stealth: 150,
 		Heal: 160, Breath: 140, Tenacity: 120,

@@ -33,7 +33,7 @@ Agilidade                     Sentido
 | Agilidade | Agility (AGI) | Primário | Deslocamento: rapidez, aceleração e frenagem |
 | Flexibilidade | Flexibility (FLX) | Primário | Amplitude de movimentos: acrobacia, evasão, deslizar |
 | Sentido | Sense (SEN) | Primário | Percepção pelos cinco sentidos |
-| Força | Strength (Str) | Secundário | Média de Resistência e Agilidade. Potência física: empurrar, agarrar, carregar |
+| Força | Strength (Str) | Secundário | Média de Resistência e Agilidade. Potência física: forçar, agarrar, carga |
 | Celeridade | Celerity (Cel) | Secundário | Média de Agilidade e Flexibilidade. Golpes e movimentos rápidos: ligeireza, repelir, finta |
 | Destreza | Dexterity (Dex) | Secundário | Média de Flexibilidade e Sentido. Precisão e controle fino: reflexo, pontaria, furtividade |
 | Constituição | Constitution (Con) | Secundário | Média de Sentido e Resistência. Fôlego e recuperação: cura, respiração, tenacidade |

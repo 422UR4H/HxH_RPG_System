@@ -57,9 +57,9 @@
 | Vitalidade | Vitality | Resistência | Influencia HP, vigor geral |
 | Energia | Energy | Resistência | Perícia que influencia a barra de Stamina (SP) e a resistência física |
 | Defesa | Defense | Resistência | Capacidade de resistir a dano |
-| Empurrão | Push | Força | Empurrar objetos e oponentes |
+| Forçar | Force | Força | Empurrar, puxar, arrombar ou pressionar |
 | Agarrar | Grab | Força | Prender oponentes |
-| Carregar | Carry | Força | Capacidade de carga |
+| Carga | Charge | Força | Capacidade de carga e embalo |
 | Rapidez | Quickness | Agilidade | Velocidade corporal, como em ajustes de postura |
 | Aceleração | Accelerate | Agilidade | Rapidez para ganhar velocidade |
 | Freio | Brake | Agilidade | Capacidade de parar rapidamente |
@@ -86,7 +86,7 @@
 | PT-BR | EN | Atributo | Descrição |
 |---|---|---|---|
 | Foco | Focus | Nen da Chama | Atenção sustentada em qualquer tarefa |
-| Força de Vontade | WillPower | Nen da Chama | Perseverança e determinação |
+| Força de Vontade | WillPower | Nen da Chama | Perseverança e determinação; também a vontade de lutar contra quem é — ou parece — mais forte, sem assumir a própria pior condição (é o que a Biske cobra do Killua) |
 | Autoconhecimento | SelfKnowledge | Nen da Chama | Compreensão de si mesmo |
 | Controle de Aura (CoA) | Coa | Nen da Consciência | Controle fino da aura |
 | MOP | Mop | Nen da Consciência | Aura máxima armazenada no corpo |

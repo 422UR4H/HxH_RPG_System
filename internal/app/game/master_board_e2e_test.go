@@ -947,7 +947,7 @@ func TestE2E_MasterActionWithAttackIsRefused(t *testing.T) {
 		"attack": map[string]any{
 			"weapon": "Sword",
 			"hit":    map[string]any{"skillName": "Accuracy"},
-			"damage": map[string]any{"skillName": "Push"},
+			"damage": map[string]any{"skillName": "Force"},
 		},
 	})
 

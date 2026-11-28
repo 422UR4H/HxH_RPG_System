@@ -85,7 +85,7 @@ func lastResolutionUpdated(t *testing.T, c *collector) game.ResolutionUpdatedPay
 
 // TestE2E_EditQueuedAction drives edit_action on an action still in the QUEUE (owner decision,
 // 2026-10-12): the master gets action_edited, then the action_queued that re-describes the same
-// action with the condition and the damage skill in force, and the public bars; the player who
+// action with the condition in force, and the public bars; the player who
 // declared it gets none of it.
 func TestE2E_EditQueuedAction(t *testing.T) {
 	f := newCombatFixture(t)
@@ -99,8 +99,8 @@ func TestE2E_EditQueuedAction(t *testing.T) {
 		t.Fatal("the master was never told an action was queued")
 	}
 	queued := lastActionQueued(t, masterMsgs)
-	if len(queued.Conditions) != 0 || queued.DamageSkill != "Push" {
-		t.Fatalf("fresh action_queued = %+v, want no condition and the default Push", queued)
+	if len(queued.Conditions) != 0 || queued.DamageSkill != "Force" {
+		t.Fatalf("fresh action_queued = %+v, want no condition and the default Force", queued)
 	}
 
 	t.Run("its targets are not editable on the queue", func(t *testing.T) {
@@ -112,13 +112,12 @@ func TestE2E_EditQueuedAction(t *testing.T) {
 		}
 	})
 
-	t.Run("a condition and the damage skill land, and the master sees them", func(t *testing.T) {
+	t.Run("a condition lands, and the master sees it", func(t *testing.T) {
 		beforeQueued := masterMsgs.count(game.MsgTypeActionQueued)
 		beforeBars := masterMsgs.count(game.MsgTypeBarsUpdated)
 		sendWS(t, master, "edit_action", map[string]any{
-			"actionId":    queued.ActionID.String(),
-			"conditions":  []map[string]any{{"field": "hit", "modifier": 3, "description": "mira"}},
-			"damageSkill": "Grab",
+			"actionId":   queued.ActionID.String(),
+			"conditions": []map[string]any{{"field": "hit", "modifier": 3, "description": "mira"}},
 		})
 		if !masterMsgs.await(game.MsgTypeActionEdited, 2*time.Second) {
 			t.Fatal("the master never received action_edited")
@@ -130,8 +129,8 @@ func TestE2E_EditQueuedAction(t *testing.T) {
 			t.Fatal("the bars never went out after the edit")
 		}
 		got := lastActionQueued(t, masterMsgs)
-		if got.ActionID != queued.ActionID || got.DamageSkill != "Grab" {
-			t.Fatalf("action_queued = %+v, want the same action measured by Grab", got)
+		if got.ActionID != queued.ActionID || got.DamageSkill != "Force" {
+			t.Fatalf("action_queued = %+v, want the same action, still measured by Force", got)
 		}
 		if len(got.Conditions) != 1 || got.Conditions[0].Field != "hit" || got.Conditions[0].Modifier != 3 ||
 			got.Conditions[0].ActionID != queued.ActionID {
@@ -162,4 +161,61 @@ func lastActionQueued(t *testing.T, c *collector) game.ActionQueuedPayload {
 	}
 	t.Fatal("no action_queued in the collected messages")
 	return game.ActionQueuedPayload{}
+}
+
+// TestEditActionRefusesDamageSkill: Force always measures the damage, so an old client that
+// still sends edit_action.damageSkill gets a clear refusal — never a silent half-applied edit.
+func TestEditActionRefusesDamageSkill(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := newCollector(master)
+
+	f.enqueueAttack(t, player)
+	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatal("the master was never told an action was queued")
+	}
+	queued := lastActionQueued(t, masterMsgs)
+	editedBefore := masterMsgs.count(game.MsgTypeActionEdited)
+
+	// the condition rides along: a refusal must not apply it either.
+	sendWS(t, master, "edit_action", map[string]any{
+		"actionId":    queued.ActionID.String(),
+		"conditions":  []map[string]any{{"field": "hit", "modifier": 3}},
+		"damageSkill": "Grab",
+	})
+	if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatal("the master never got the refusal")
+	}
+	var code string
+	for _, m := range masterMsgs.snapshotMessages() {
+		if m.Type != game.MsgTypeError {
+			continue
+		}
+		var p game.ErrorPayload
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			t.Fatalf("unmarshal error payload: %v", err)
+		}
+		code = p.Code
+	}
+	if code != "invalid_payload" {
+		t.Errorf("error code = %q, want invalid_payload", code)
+	}
+	// Barreira: um pedido válido depois do recusado; a conexão é sequencial, então quando o
+	// action_edited dele chega, qualquer efeito do recusado já teria chegado.
+	sendWS(t, master, "edit_action", map[string]any{
+		"actionId":   queued.ActionID.String(),
+		"conditions": []map[string]any{{"field": "hit", "modifier": 5}},
+	})
+	if !awaitCount(masterMsgs, game.MsgTypeActionEdited, editedBefore+1, 2*time.Second) {
+		t.Fatal("the follow-up edit never landed")
+	}
+	if n := masterMsgs.count(game.MsgTypeActionEdited); n != editedBefore+1 {
+		t.Errorf("action_edited arrived %d time(s), want only the follow-up's", n-editedBefore)
+	}
+	got := lastActionQueued(t, masterMsgs)
+	if got.DamageSkill != "Force" || len(got.Conditions) != 1 || got.Conditions[0].Modifier != 5 {
+		t.Errorf("action_queued = %+v, want Force and only the follow-up's +5 (not the refused +3)", got)
+	}
 }

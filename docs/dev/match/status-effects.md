@@ -204,6 +204,24 @@ Decisões do dono: spec §16.4 itens 28–32 e `docs/superpowers/specs/2026-11-1
   e quem teve a morte desfeita (`DeadMarks()`); `PersistMatchEnd` faz `dead_at = COALESCE(dead_at,
   fim)` ou `NULL`, na transação do fim.
 
+## Fim da batalha: a Guarda aberta sai
+
+A única remoção feita pelo sistema (spec §10, decisão do dono 2026-11-27). No braço
+`MsgTypeChangeRoundMode` (`room.go`), na mesma seção crítica do `Execute`, quando o regime foi de
+`Race` para `Free` (o `SetRoundMode` que não muda nada não conta): `endBattleStatusEffectsLocked`
+(`status_effects.go`) tira o retrato de antes (`statusBeforeLocked`), chama
+`MatchSession.EndBattleStatusEffects` (uma remoção `ChangeRemoved` por `openGuard`, fichas em ordem
+estável) e passa a mudança por `settleStatusChangeLocked` com `statusUndo{}` — o mesmo pós-caso-de-uso
+do `runStatusEffectChange` do mestre, sem cliente, sem âncora e **sem desfazer**
+(`undoInTurnAppliesLocked`/`giveBackLocked` não rodam): uma Guarda aberta aplicada no turno aberto
+fica com a aplicação e a saída em `turnWrites.statusEffects`, gravadas juntas no fechamento. Fora de
+turno, `holdStatusEffectWritesLocked` manda gravar na hora. Depois do unlock, do
+`recordRoundModeChanged`, do `round_mode_changed` e do `broadcastBars`, `announceStatusChange` grava
+(fora de turno) e anuncia pelo `syncStatusViews`.
+
+O `runStatusEffectChange` do mestre é as mesmas três peças: `statusBeforeLocked` → o caso de uso →
+`settleStatusChangeLocked` (com `statusUndo{allowed: true, restore}`) → `announceStatusChange`.
+
 ## Quem vê (lista) e visão (névoa)
 
 Armazenamento da lista: coluna `audience` JSONB **anulável** (`NULL` = padrão do tipo;
@@ -429,4 +447,5 @@ Testes automáticos (resistência ao entrar, equilíbrio do Tato, Recuperação,
 automático), dano e recuperação por round, um comando de **editar o HP** do mestre, asfixia e
 Fadiga, "não usa habilidades" (Nen), a regra de escape por tipo (provisória, aguarda o redesenho do
 movimento), revelar a um jogador só (a revelação é para todos), push de WS depois de revelar e
-desfazer depois do fechamento do turno. Lista no contrato, §10.
+desfazer depois do fechamento do turno. O sistema não tira efeito nenhum sozinho, exceto a Guarda
+aberta no fim da batalha (acima). Lista no contrato, §10.

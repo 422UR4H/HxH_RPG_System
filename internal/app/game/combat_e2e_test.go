@@ -495,7 +495,7 @@ func (f *combatFixture) enqueueAttackAt(t *testing.T, conn *websocket.Conn, acto
 		"attack": map[string]any{
 			"weapon": "Sword",
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 }
@@ -714,7 +714,7 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 		"attack": map[string]any{
 			"weapon": "Sword",
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 
@@ -874,7 +874,7 @@ func TestE2E_AttackWithoutActorIDIsRefused(t *testing.T) {
 		"targetId": []string{f.victimID.String()},
 		"attack": map[string]any{
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 
@@ -896,7 +896,7 @@ func TestE2E_AttackWithUnknownSkillIsRefused(t *testing.T) {
 		"targetId": []string{f.victimID.String()},
 		"attack": map[string]any{
 			"hit":    map[string]any{"skillName": "Kamehameha"},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 
@@ -1010,7 +1010,7 @@ func TestE2E_ReopeningAnEmptyQueueStillSettlesTheClosedTurn(t *testing.T) {
 		"attack": map[string]any{
 			"weapon": "Sword",
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {

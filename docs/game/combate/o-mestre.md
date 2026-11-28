@@ -65,7 +65,7 @@ teste, as duas se anulam e o valor médio volta a valer.
 ## Ajustar uma ação que ainda está na fila
 
 O mestre pode ajustar uma ação **antes de ela agir**, enquanto ainda espera na fila: dar ou tirar
-vantagem, somar um ajuste, trocar a perícia que mede o dano. Se ele mexe na **velocidade**, a
+vantagem ou somar um ajuste. Se ele mexe na **velocidade**, a
 ação muda de lugar na fila. O jogador que declarou a ação não vê o ajuste. Se a ação for
 cancelada, ou trocada por uma reação, o ajuste vai embora com ela.
 
@@ -88,6 +88,70 @@ visão dele, a visão acompanha.
 Sem ninguém escolhido, o mestre volta a ver o tabuleiro inteiro. E enquanto arruma o tabuleiro,
 o mestre vê sempre tudo.
 
+## Efeitos de status na mão
+
+O mestre aplica, edita e tira os status de qualquer personagem, de jogador ou NPC. O que cada
+status faz está em [Efeitos de Status](efeitos-de-status.md); aqui está só como o mestre mexe neles.
+
+### Aplicar
+
+- **Caso simples:** escolhe o personagem, escolhe o status e aplica. O resto nasce com o valor
+  padrão, e **todo valor padrão pode ser editado**.
+- **Só o que o status tem:** cada status pede apenas os seus campos (domínios, faces, nível,
+  número, conduta). Não há um formulário único com tudo.
+- **Vários personagens de uma vez:** o mesmo status pode ir para vários personagens num só gesto.
+  É tudo ou nada: se um deles não puder receber, nenhum recebe.
+- **Quem já tem o status:** aplicar de novo um status que o personagem já tem é recusado. O mestre
+  edita o que já está lá.
+- **Morto não se aplica na mão.** Ele entra só pela regra, quando a vida cai abaixo do limite.
+
+### Editar e tirar
+
+- O mestre edita e tira o status pelo próprio status.
+- Quando o mestre passa a mesa do turno disputado para o turno livre (fim da batalha), a Guarda aberta sai sozinha de todos os personagens.
+- **Tirar libera quem estava bloqueado** (Atordoado e os parecidos), se ele quiser liberar antes
+  da hora.
+- **Desfazer no mesmo turno:** tirar um status no mesmo turno aberto em que ele foi aplicado é
+  desfazer, "como se nunca tivesse existido". Se o status tinha tirado ações da fila ou trocado
+  uma reação, o mestre é perguntado: **"Devolver?"**, com a lista do que volta. Devolvido, volta
+  igual: a mesma ação, no mesmo lugar da fila, com os mesmos dados e as edições que o mestre tinha
+  feito. O que não puder voltar chega ao mestre com o motivo em português. Fora do turno, ou
+  depois que o turno fechou, não há pergunta.
+- **Desfazer a morte:** o mestre tira o Morto depois que o turno fechou. Dentro do turno não há
+  morte para desfazer: o cálculo do mestre só avisa que o personagem morre, e se o golpe mudar
+  antes do fechamento, ele não morre. Ao tirar o Morto, o mestre escolhe **com quantos pontos de
+  vida o personagem volta**; se não escolher, ele volta com o limite negativo da barra.
+
+### O apelido
+
+O apelido é um texto livre, de até 60 caracteres, mostrado à mesa junto do status. Tem peso de
+cena, não de regra: o sistema não o interpreta, e quem pesa nos testes é o status, não o nome que
+o mestre deu. Sugestões por status: Visão — Cego, Ofuscado · Audição — Surdo, Zumbido · Tato
+(equilíbrio) — Tonto, Vertigem · Tato (toque) — Dormente · Corpo debilitado — Enjoado, Febril,
+Fraco · Mente debilitada — Abalado, Confuso · Espírito debilitado — Aura abalada, Desanimado ·
+Paralisado — Em choque, Travado · Atônito — Em pânico, Horrorizado · Preso — Agarrado, Amarrado,
+Soterrado, Pendurado · Compelido — Amedrontado, Hipnotizado, Em fúria · Escondido — Furtivo,
+Emboscado · Guarda aberta — Desprevenido, Surpreso · Queimando — Em chamas · Asfixiando —
+Afogando, Estrangulado · Lesionado — livre ("braço quebrado").
+
+### Quem vê
+
+- **Todos veem, por padrão:** Caído, No ar, Preso, Queimando, Inconsciente, Atordoado,
+  Asfixiando, Guarda aberta e Morto.
+- **O mestre e o jogador do personagem veem, por padrão:** todos os outros. Num NPC, só o mestre.
+- **O mestre pode mudar isso** em cada status: tornar público um que seria reservado, ou deixá-lo
+  só para si mesmo num personagem de jogador (a agulha do Illumi: o efeito age sem o jogador
+  saber). Ele também pode escolher **quais jogadores** enxergam um status.
+- **A névoa vale por cima:** o jogador só vê um status público de um personagem enquanto vê esse
+  personagem no mapa. Sem mapa, todos veem na hora.
+- **O que o jogador não vê ainda pesa:** um status reservado conta nos testes do jogador mesmo
+  que ele não saiba por quê.
+- **Histórico:** entrada, mudança e saída de cada status ficam registradas no turno e na página
+  da partida. O que um jogador não podia ver não aparece para ele, até o mestre revelar. O mestre
+  revela quando quiser, inclusive depois que a partida acabou, e ao revelar o passado aparece.
+  Ampliar quem percebe um Escondido **não** revela o que já passou: só o mestre revela.
+  Sobre o Escondido, ver [o capítulo dos status](efeitos-de-status.md).
+
 ## O que os jogadores enxergam
 
 **A ação editada é a ação.** Quando o mestre muda alguma coisa, o que a mesa vê é o resultado
@@ -98,3 +162,8 @@ já com a mudança — não a versão do jogador com uma correção pendurada.
 > **🔧 Para Desenvolvedores**
 >
 > Implementação técnica: [`docs/dev/match/combat-engine.md`](../../dev/match/combat-engine.md)
+> · Efeitos de status: [`docs/dev/api/match-status-effects.md`](../../dev/api/match-status-effects.md)
+>
+> - TODO (tela do mestre): fora do texto do jogador até o front ter a tela. O servidor já aceita aplicar, editar, tirar, escolher quem vê e revelar; falta a tela do mestre para isso (fases do front).
+> - TODO (Escondido por jogador): fora do texto do jogador até existir. Um jogador perceber um Escondido enquanto os outros não, e revelar o histórico a um jogador só, estão definidos (spec §16.2, itens 13–14, e §17); hoje a revelação vale para todos.
+> - TODO (configuração da mesa): fora do texto do jogador até existir o ajuste. A mesa poderá escolher que os status de personagem de jogador sejam públicos por padrão (spec §9); ainda não há como mudar isso.

@@ -181,7 +181,7 @@ Se `reactToId` for não-zero, a mensagem é roteada internamente como
     "attack": {
       "weapon": "Sword",
       "hit": { "skillName": "Accuracy" },
-      "damage": { "skillName": "Push" },
+      "damage": { "skillName": "Force" },
       "charge": { "skillName": "Energy" }
     },
     "defense": { "weapon": "Sword", "rollCheck": { "skillName": "Defense" } },
@@ -207,7 +207,7 @@ porque uma ação plausível carregue todas.
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
 | `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê o acerto. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. A arma escolhida entra pela **proficiência**, não pela perícia — ver abaixo. |
-| `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorDamageSkill`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por outra perícia é prerrogativa do mestre: [`edit_action`](#edit_action) `damageSkill`. A escolha dele **não** aparece aqui — este campo continua sendo o do jogador, descartado. |
+| `attack.damage.skillName` | **Descartado.** O dano soma a **`Force`** do atacante, lido direto da ficha (`TurnResolver.actorDamageSkill`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. A perícia do dano é sempre a Força; o mestre não a troca mais. Este campo continua sendo o do jogador, descartado. |
 
 #### Movimentos empilhados
 
@@ -249,7 +249,7 @@ a proficiência lida é a de **`Fist`**, porque o golpe corporal é uma arma do 
 qualquer outra. Quem não tem proficiência nenhuma com aquela arma soma **zero** — não existe
 penalidade de arma destreinada; se um dia existir, é regra nova, não este caminho.
 
-É o espelho do dano, que já funcionava assim: o dano rola os dados **da arma** e soma o `Push`
+É o espelho do dano, que já funcionava assim: o dano rola os dados **da arma** e soma a `Force`
 do atacante; o acerto rola o conjunto da partida sobre `Accuracy` e soma a **proficiência**
 daquela arma.
 
@@ -758,7 +758,7 @@ independente — mande só o que muda.
 | `conditions[].skillName` | **Alternativa** a `field`, nomeando uma entrada de `skills`. Mandar os dois é erro. |
 | `bias` | **Níveis** de vantagem (positivo) ou desvantagem (negativo) nos dados, inteiro; teto técnico de 10 níveis por teste (acima disso lê como 10). Cada nível acrescenta **um dado**; **não** é somado ao total — ver [O teste de dados](#o-teste-de-dados-vantagem-desvantagem-e-crítico). O que vale é o viés **líquido**: o do mestre, o do sistema (troca de reação), o do ledger e o dos efeitos de status somam e se cancelam nível a nível. **Recusado no dano** (`field: "damage"`): o dano rola um conjunto só de dados, não há o que escolher — `game_error` `O dano não aceita vantagem nem desvantagem.`. O `modifier` no dano soma ao dano bruto (piso zero) e vale para toda a cadeia de alvos. |
 | `modifier` | Ajuste plano no total. |
-| `damageSkill` | A perícia que mede o dano do ataque da ação (padrão **`Push`**). Qualquer perícia válida do enum (perícia desconhecida → `invalid_action`), ou **`"None"`**: nenhuma perícia soma no dano — só os dados e o bônus fixo da arma (uma arma de fogo, por exemplo). Ausente = não mexe; `"Push"` devolve ao padrão e apaga a captura. Só numa ação com ataque — senão `game_error` `Essa ação não tem ataque, então não há dano para medir.`. O original vai para `overridden_action_values` com origem `system`. Exemplo: `{ "type": "edit_action", "payload": { "damageSkill": "Grab" } }`. |
+| `damageSkill` | **Removido (2026-11-27).** A Força sempre mede o dano. Um `edit_action` que ainda mande a chave é **recusado inteiro** (`error` `invalid_payload`, `A perícia que mede o dano não pode mais ser trocada: é sempre a Força.`) — nada do resto do payload é aplicado. Para ler qual perícia mediu, use `resolution_updated.damageSkill` / `action_queued.damageSkill` (somente leitura). |
 | `escapeLanding.position` | Onde a peça de uma **fuga que falhar** vai parar — ver abaixo. `null` limpa. |
 
 > **O que cada rolagem muda com o turno aberto.**
@@ -832,8 +832,8 @@ efeito de status), nunca numa leitura.
 
 **Editar uma ação na fila.** Com `actionId` de uma ação que está na fila (com ou sem turno
 aberto), a edição pousa nela e vai junto quando ela abrir: as capturas ficam guardadas até o
-fechamento do turno dela. Vale `conditions` e `damageSkill`; **`targetIds` e `skills` são
-recusados** (`game_error` `Uma ação na fila só aceita mudar as condições e a perícia de dano.`), porque
+fechamento do turno dela. Vale `conditions`; **`targetIds` e `skills` são
+recusados** (`game_error` `Uma ação na fila só aceita mudar as condições.`), porque
 os dois chegam ao dono antes do fechamento (o corte `Declaration` do `ownQueue` leva os alvos e
 os nomes das perícias, e o `turn_opened` leva a ação no corte `Opened`). **Editar a `speed` (ou o
 `moveSpeed`) reordena a fila**: o escalonador lê a velocidade na hora de escolher. Numa rodada
@@ -849,7 +849,7 @@ deixa `targetIds` ou `skills` já alterados.
 **Dispara:** [`action_edited`](#action_edited) **só para o mestre** e
 [`resolution_updated`](#resolution_updated) recomputado. Numa ação **na fila**: `action_edited`
 (com `turnId` zero), o [`action_queued`](#action_queued) que a redescreve ao mestre — com
-`conditions` e `damageSkill` — e [`bars_updated`](#bars_updated) (por destinatário); nenhum
+`conditions` — e [`bars_updated`](#bars_updated) (por destinatário); nenhum
 `resolution_updated`.
 
 **Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para editar a ação."`) ·
@@ -861,7 +861,7 @@ deixa `targetIds` ou `skills` já alterados.
 `O pouso só vale para uma fuga no turno aberto.`,
 `Esse pouso fica fora do mapa.`, `O dano não aceita vantagem nem desvantagem.`,
 `Essa ação não tem ataque, então não há dano para medir.`,
-`Uma ação na fila só aceita mudar as condições e a perícia de dano.`).
+`Uma ação na fila só aceita mudar as condições.`).
 
 ### O teste de dados: vantagem, desvantagem e crítico
 
@@ -978,6 +978,13 @@ O regime que a mesa recebe de volta é **lido da sessão**, não ecoado do pedid
 
 **Dispara:** [`round_mode_changed`](#round_mode_changed) (mesa) e
 [`bars_updated`](#bars_updated) (por destinatário).
+
+**Fim da batalha.** De `Race` para `Free` (só essa transição), o servidor tira toda Guarda aberta
+(`openGuard`) da mesa e manda o `status_effects_updated` de cada personagem que a perdeu, por
+destinatário (pista direta). Não há garantia de ordem entre o `round_mode_changed` (pista de
+difusão) e o `status_effects_updated` (pista direta). Não é um desfazer. Com turno aberto, a saída vale na
+hora e é gravada com o fechamento. Ver
+[match-status-effects.md, "Fim da batalha"](match-status-effects.md#fim-da-batalha-guarda-aberta-sai).
 
 **Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para trocar o regime do round."`) ·
 `match_not_started` · `game_error` (`O modo do round deve ser livre ou corrida.`).
@@ -1268,7 +1275,7 @@ conectado, a mensagem simplesmente não é entregue a ninguém.
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
-        "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+        "damage": { "skillName": "Force", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
         "relativeVelocity": 0
       }
     }
@@ -1311,11 +1318,11 @@ do enfileiramento, não a estende a ninguém novo. `bars` (`action` e/ou `move`)
 dedutível da ordem pública em `bars_updated`; `action` é o que passou a não ser mais
 redundante com ela.
 
-**`conditions` e `damageSkill` (2026-10-12)** são o que o mestre editou nela na fila
+**`conditions` (2026-10-12) e `damageSkill`** — `conditions` é o que o mestre editou nela na fila
 ([`edit_action`](#edit_action)): `conditions` no mesmo formato de `resolution_updated.conditions`
 (ausente sem condição nenhuma — o `actionwire` nunca leva a condição do mestre, então esta é a
 única superfície onde ela aparece antes do turno), e `damageSkill` a perícia que mede o dano
-(ausente sem ataque; `"Push"` por padrão).
+(somente leitura; ausente sem ataque; sempre `"Force"`).
 
 **Disparado por:** `enqueue_action` aceito, logo após o ack de quem enviou — e de novo depois de
 um `edit_action` naquela ação na fila. **Um `action_queued` com um `actionId` que o cliente já tem
@@ -1586,7 +1593,7 @@ ver a ⚠️ de ordem mais abaixo.
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
-        "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+        "damage": { "skillName": "Force", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
         "relativeVelocity": 0
       }
     }
@@ -1620,7 +1627,7 @@ presente (o dono vê tudo do próprio ator, `Viewer.SeesAllOf`):
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy" },
-        "damage": { "skillName": "Push" },
+        "damage": { "skillName": "Force" },
         "relativeVelocity": 0
       }
     }
@@ -1653,7 +1660,7 @@ permanente, `ProjectAction` sempre zera `Trigger` para quem não é dono nem mes
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy" },
-        "damage": { "skillName": "Push" },
+        "damage": { "skillName": "Force" },
         "relativeVelocity": 0
       }
     }
@@ -1963,7 +1970,7 @@ junto é de turno aberto.
   "payload": {
     "turnId": "55555555-5555-4555-8555-555555555555",
     "isSettled": false,
-    "damageSkill": "Push",
+    "damageSkill": "Force",
     "action": {
       "skillName": "Accuracy",
       "skillValue": 14,
@@ -2066,7 +2073,7 @@ junto é de turno aberto.
 | `walls` | O que o turno fez a **cada parede** que mirou, na ordem de `targetId`. **Ausente** sem parede. Projeção como `targets`: com o turno aberto, só o mestre; fechado, todos — menos uma `secret_door` não revelada, que só o mestre vê. Ver abaixo. |
 | `errors` | **Sempre master-only.** Faltas do **motor**, não do jogo — ver abaixo. Ausente numa resolução limpa. |
 | `hiddenTargetsHit` | Quantos golpes **acertaram** um alvo Escondido que **este destinatário não percebe** (dono do produto, D2). **Só o número**: nenhum id, valor, reação ou posição — o alvo segue fora de `targets` e de `targetId`. O front mostra "Desconhecido 1..N" a partir da contagem (dois alvos anônimos no mesmo turno = "Desconhecido 1" e "Desconhecido 2"). Um alvo que esquivou, aparou ou foi barrado antes na cadeia **não conta**: a mesa não pode saber que havia alguém ali. **Ausente** (`omitempty`) = nenhum; o mestre e o dono do alvo **nunca** o recebem (percebem o alvo e veem o resultado real). Depois da revelação do mestre o destinatário percebe o alvo: o resultado real volta e a contagem cai. Segue o eixo do TEMPO de `targets` (turno aberto: só o mestre recebe a resolução; assentado: todos). |
-| `damageSkill` | A perícia que mediu o dano: `Push`, ou a que o mestre escolheu ([`edit_action`](#edit_action) `damageSkill`); `"None"` = nenhuma. **Ausente** sem ataque. Segue o eixo de `rawDamage`: com o turno aberto, só o mestre; fechado, todos. |
+| `damageSkill` | A perícia que mediu o dano: sempre `Force` (somente leitura). **Ausente** sem ataque. Segue o eixo de `rawDamage`: com o turno aberto, só o mestre; fechado, todos. |
 | `conditions` | As condições do mestre **em vigor** no turno aberto: uma entrada por rolagem com condição, no formato de uma entrada de `edit_action.conditions` mais `actionId` (sempre o ID real, inclusive da ação do turno). **Só o mestre, só com turno aberto** — nunca no payload liquidado, nunca no histórico (a condição fica gravada dentro da ação, na tabela `actions`). É o que o editor do mestre mostra depois de recarregar. Ausente = nada editado. `field: "defense"` numa reação é a defesa padrão dela. |
 
 **`walls[]`** — `{ wallId, kind, effectiveDamage, hp, maxHp, destroyed, open, failure? }`:
@@ -2076,7 +2083,7 @@ junto é de turno aberto.
   uma parede é derivado (e, se o viés o pede, tira os dados que faltam) como o de um personagem —
   com os efeitos de status do atacante e o crítico; `hp` e `destroyed` são a parede **como o fechamento a deixará**.
   **O golpe numa parede cai no fechamento do turno**, junto com o dano nos personagens — por isso
-  as edições do mestre no dano (modificador, `damageSkill`) valem para a parede, e o
+  as edições do mestre no dano (modificador) valem para a parede, e o
   `wall_hp_changed` sai no fechamento (antes: na abertura).
 - `kind: "interact"`: a parede **como a abertura a deixou** (a interação continua caindo na
   abertura, com o passo que chega nela). `failure` quando nada mudou: `"locked"` (personagem
@@ -2475,7 +2482,7 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
         "attack": {
           "weapon": "Sword",
           "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
-          "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+          "damage": { "skillName": "Force", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
           "relativeVelocity": 0
         }
       },
@@ -2518,7 +2525,7 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
           "attack": {
             "weapon": "Sword",
             "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
-            "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+            "damage": { "skillName": "Force", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
             "relativeVelocity": 0
           }
         }
@@ -2550,7 +2557,7 @@ presente com a versão em `actionwire.Declaration` da mesma entrada:
           "actorId": "11111111-1111-4111-8111-111111111111",
           "targetId": ["22222222-2222-4222-8222-222222222222"],
           "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity" } },
-          "attack": { "weapon": "Sword", "hit": { "skillName": "Accuracy" }, "damage": { "skillName": "Push" }, "relativeVelocity": 0 }
+          "attack": { "weapon": "Sword", "hit": { "skillName": "Accuracy" }, "damage": { "skillName": "Force" }, "relativeVelocity": 0 }
         }
       }
     ]

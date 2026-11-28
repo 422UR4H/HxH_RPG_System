@@ -1065,14 +1065,15 @@ sentou para ele — é nela que a condição da esquiva e da defesa passivas mor
 padrão a torna rolada, e o portador guarda o dado que caiu (zerar a condição não apaga um
 portador que já tem dado: o dado tem de sobreviver a um novo viés).
 
-**A perícia do dano.** `Attack.DamageSkill` (`enum.SkillName`; o valor zero lê como `Push`, via
-`EffectiveDamageSkill()`). Mora em `Attack`, e não em `Damage.SkillName`, porque o `Damage` é um
-`RollCheck` — rastro do que o jogador mandou — e o jogador nunca escolheu a perícia do dano: o
-campo dele é descartado (`actorDamageSkill` lê a perícia do atacante direto da ficha). Trocar é
-prerrogativa do mestre (`edit_action.damageSkill`) e a captura em `overridden_action_values` tem
-origem **`system`**: o original (`Push`) foi o motor quem escolheu, não o jogador. Editar de volta
-para `Push` apaga a captura, como qualquer outra edição revertida. A resolução diz qual mediu
-(`TurnResolution.DamageSkill`).
+**A perícia do dano.** Sempre a **Força** (`enum.Force`): `actorDamageSkill` lê a Força do
+atacante direto da ficha, e o `Damage.SkillName` que o jogador manda é descartado. Não há campo na
+`Attack` nem edição do mestre: a troca (`edit_action.damageSkill`, inclusive `"None"` = só a arma)
+foi removida em 2026-11-27, e um `edit_action` que ainda a mande é recusado (`invalid_payload`).
+Uma futura seção de edição mais complexa do mestre pode reintroduzir tirar a perícia do dano; arma
+de fogo só com o dano da arma virá com os tipos de dano (`TODO(armas)` em `actorDamageSkill`).
+Linhas antigas de `overridden_action_values` com o campo `damageSkill` e `actions.attack` com a
+chave `DamageSkill` ficam no banco e são ignoradas na leitura. A resolução diz qual mediu
+(`TurnResolution.DamageSkill`, sempre `Force` quando há ataque).
 
 **Condição zerada é sem condição.** O wire não consegue mandar `nil`; o mais perto que o mestre
 chega é `{bias: 0, modifier: 0, description: ""}`. `ApplyMasterAction` trata a condição zerada
@@ -1138,7 +1139,7 @@ Uma ação que sai da fila sem abrir — cancelada (`CancelAction`) ou consumida
 captura (`restoreOriginal`, pelas mesmas chaves de `captureOverride`), descarta as capturas e
 re-deriva a velocidade. O `cancelled_actions` grava a ação como o dono a declarou.
 
-O mestre vê o que editou no `action_queued` (`Conditions`, `DamageSkill`), reenviado a cada
+O mestre vê o que editou no `action_queued` (`Conditions`; `DamageSkill` é sempre `Force`), reenviado a cada
 edição; o dono não vê nada. A ordem é pública como sempre.
 
 ### Os fluxos, e quais confirmações existem de verdade

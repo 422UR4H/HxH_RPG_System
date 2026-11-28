@@ -11,9 +11,9 @@ const (
 
 	// Strength: Ao treinar e aprender uma arma, o personagem treina a skill Strike
 	// essa skill é relacionada à sua arma, então não é comum (common)
-	Push  SkillName = "Push"
-	Grab  SkillName = "Grab"
-	Carry SkillName = "Carry"
+	Force  SkillName = "Force"
+	Grab   SkillName = "Grab"
+	Charge SkillName = "Charge"
 
 	// Agility
 	Quickness  SkillName = "Quickness"
@@ -75,7 +75,7 @@ func (sn SkillName) String() string {
 func AllSkillNames() []SkillName {
 	return []SkillName{
 		Vitality, Energy, Defense,
-		Push, Grab, Carry,
+		Force, Grab, Charge,
 		Quickness, Accelerate, Brake,
 		Legerity, Repel, Feint,
 		Acrobatics, Evasion, Sneak,

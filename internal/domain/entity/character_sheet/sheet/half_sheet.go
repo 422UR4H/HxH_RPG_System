@@ -274,7 +274,7 @@ func (hs *HalfSheet) ToString() string {
 	skillsNextLvlExp := hs.skill.GetPhysicalsNextLvlBaseExp()
 	sortSkillNames := []enum.SkillName{
 		enum.Vitality, enum.Energy, enum.Defense,
-		enum.Push, enum.Grab, enum.Carry,
+		enum.Force, enum.Grab, enum.Charge,
 		enum.Quickness, enum.Accelerate, enum.Brake,
 		enum.Legerity, enum.Repel, enum.Feint,
 		enum.Acrobatics, enum.Evasion, enum.Sneak,

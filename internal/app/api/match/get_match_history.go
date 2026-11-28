@@ -165,8 +165,8 @@ type TurnResolutionResponse struct {
 	IsSettled bool                      `json:"isSettled"`
 	Action    RollResultResponse        `json:"action"`
 	Targets   []CharacterResultResponse `json:"targets"`
-	// DamageSkill names the skill that measured the damage ("Push" unless the master swapped
-	// it). Absent on a turn with no attack and on turns recorded before Phase 8 (all Push).
+	// DamageSkill names the skill that measured the damage (always "Force" now; turns closed before
+	// the swap went away may say "Grab" or "None", returned as stored). Absent on a turn with no attack.
 	DamageSkill      string                    `json:"damageSkill,omitempty"`
 	PendingReactions []PendingReactionResponse `json:"pendingReactions,omitempty"`
 	// Walls is what the turn did to each wall it targeted — the blow's effective damage, or why

@@ -549,10 +549,6 @@ func (s *MatchSession) ApplyMasterAction(
 	if t == nil && (ma.TargetID != nil || ma.Skills != nil) {
 		return nil, ErrQueuedEditUnsupported
 	}
-	// A damage skill needs an attack to measure; refuse before anything else is looked at.
-	if ma.DamageSkill != nil && target.Attack == nil {
-		return nil, ErrNoDamageToMeasure
-	}
 	// Validate every condition edit BEFORE mutating TargetID, Skills or any condition. A
 	// mid-loop resolveRollCheck failure used to return nil, err after TargetID/Skills had
 	// already mutated (and, for an earlier condition in the same list, already captured an
@@ -593,14 +589,6 @@ func (s *MatchSession) ApplyMasterAction(
 	}
 	if ma.Skills != nil {
 		s.applySkillEdit(target, ma.Skills, masterUUID)
-	}
-	if ma.DamageSkill != nil {
-		// The ORIGINAL is the effective skill — Push when the field was never set — and its
-		// origin is the system: the engine chose Push, the player never did. Editing back to
-		// Push erases the capture, like any other edit-back.
-		s.captureOverride(target.GetID(), "damageSkill", match.OriginSystem, masterUUID,
-			target.Attack.EffectiveDamageSkill(), *ma.DamageSkill)
-		target.Attack.DamageSkill = *ma.DamageSkill
 	}
 	for _, edit := range ma.Conditions {
 		rc, err := resolveRollCheck(target, edit)
@@ -711,13 +699,12 @@ func (s *MatchSession) discardEdits(a *action.Action) {
 
 // restoreOriginal writes one capture's original back onto the action. The field keys are the
 // ones captureOverride is called with: conditionFieldKey's "<field>.condition" and
-// "skill:<name>.condition", and "damageSkill", "targetIds", "skills".
+// "skill:<name>.condition", "targetIds", "skills" ("damageSkill" only as an ignored legacy row).
 func restoreOriginal(a *action.Action, ov match.OverriddenValue) {
 	switch ov.Field {
 	case "damageSkill":
-		if name, ok := ov.Original.(enum.SkillName); ok && a.Attack != nil {
-			a.Attack.DamageSkill = name
-		}
+		// Linha antiga da troca da perícia do dano (já removida): a Força sempre mede o dano,
+		// então não há o que devolver. Ignorada de propósito, para não quebrar o desfazer.
 		return
 	case "targetIds":
 		ids, _ := ov.Original.([]uuid.UUID)

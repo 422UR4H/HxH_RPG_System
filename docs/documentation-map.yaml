@@ -316,6 +316,10 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/match-status-effects.md
         confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/efeitos-de-status.md
+        confidence: directly_affected
+        reason: Catálogo dos status, o que pesa nos testes, crítico e morte, como o jogador lê
     notes: Tipos, parâmetros por tipo (tabela do contrato §4), peças, Summary, quem vê (Listed)
   - code_path: internal/app/game/status_effects.go
     dev_docs:
@@ -357,6 +361,10 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/match/combat-engine.md
         confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/efeitos-de-status.md
+        confidence: directly_affected
+        reason: Catálogo dos status, o que pesa nos testes, crítico e morte, como o jogador lê
     notes: RollEffectOf — o que os efeitos fazem a um teste (viés, penalidade, falha automática, só rolada); tabela domínio → teste; tabela "O que pesa nas rolagens" do contrato
   - code_path: internal/domain/match/matchsession/death.go
     dev_docs:
@@ -366,6 +374,10 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/character-sheet.md
         confidence: possibly_affected
+    game_docs:
+      - path: docs/game/combate/efeitos-de-status.md
+        confidence: directly_affected
+        reason: Catálogo dos status, o que pesa nos testes, crítico e morte, como o jogador lê
     notes: Morte no fechamento do turno (applyDeaths), dead_at só no fim da partida, remove_status_effect com hp
   - code_path: internal/domain/match/matchsession/dice.go
     dev_docs:
@@ -402,7 +414,7 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/match/status-effects.md
         confidence: directly_affected
-    notes: Revelações do mestre (MAX por efeito, em qualquer partida), RevealableInMatch (o 404 do reveal: evento em qualquer partida + ficha participante desta)
+    notes: 'Revelações do mestre (MAX por efeito, em qualquer partida), RevealableInMatch (o 404 do reveal: evento em qualquer partida + ficha participante desta)'
   - code_path: internal/domain/statuseffect/event.go
     dev_docs:
       - path: docs/dev/api/match-history.md
@@ -441,6 +453,13 @@ mappings:
       - path: docs/dev/api/match-history.md
         confidence: directly_affected
     notes: Eventos de status, ações de quem estava Escondido, concealedBy/revealed, horários reais
+  - code_path: migrations/20261127000000_rename_strength_skills.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/api/character-sheet.md
+        confidence: possibly_affected
+    notes: Renomeia as perícias de Força (Push→Force, Carry→Charge) nas colunas de experiência e nos valores gravados no histórico (SkillName, damageSkill)
   - code_path: migrations/20261118000000_status_effect_events.sql
     dev_docs:
       - path: docs/dev/api/match-history.md
@@ -1478,8 +1497,8 @@ mappings:
       forma INICIAL do aparar, não uma provisória — o que falta é o entorno: tipos de
       dano, armadura e Nen. A margem do acerto NÃO entra no dano, por decisão de
       produto. Hoje toda arma do catálogo tem defense 0, então a subtração é inerte.
-      backend-prep-front-combat: RawDamage ganhou o parâmetro push — soma o Push do
-      atacante (actorDamageSkill em turn_resolver.go: lê Attack.EffectiveDamageSkill(), Push por padrão), lido da ficha, nos dois call sites
+      backend-prep-front-combat: RawDamage ganhou o parâmetro `force` — soma o Forçar (Force) do
+      atacante (actorDamageSkill em turn_resolver.go: sempre a Força), lido da ficha, nos dois call sites
       (parede e personagem). Consequência de contrato: attack.damage.skillName no WS
       passou a ser aceito/validado mas descartado — documentado em match-combat-ws.md
       junto de speed.

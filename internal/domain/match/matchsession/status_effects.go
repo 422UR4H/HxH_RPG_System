@@ -542,15 +542,10 @@ func (s *MatchSession) reapplyEdits(a *action.Action, snap editSnapshot) {
 
 // currentValue é o valor de agora de um campo que captureOverride captura, na forma que
 // restoreOriginal escreve de volta (as chaves de lá: "<campo>.condition",
-// "skill:<nome>.condition", "damageSkill", "targetIds", "skills"). nil = sem valor (uma
+// "skill:<nome>.condition", "targetIds", "skills"). nil = sem valor (uma
 // condição ausente).
 func currentValue(a *action.Action, field string) any {
 	switch field {
-	case "damageSkill":
-		if a.Attack == nil {
-			return nil
-		}
-		return a.Attack.DamageSkill
 	case "targetIds":
 		return append([]uuid.UUID(nil), a.TargetID...)
 	case "skills":
@@ -941,4 +936,35 @@ func refusalClause(err error) string {
 	}
 	log.Printf("restore refusal with no sentence: %v", err)
 	return "algo impediu a volta"
+}
+
+// EndBattleStatusEffects tira, como o sistema, toda Guarda aberta da sessão: o fim da batalha,
+// quando o mestre passa o round do turno disputado para o livre (spec §10, decisão do dono
+// 2026-11-27). Devolve as fichas tocadas, em ordem estável, e uma remoção por efeito, com o
+// evento ChangeRemoved que a sala carimba. Não é um desfazer: nada do que a Guarda aberta tirou
+// volta, e a fila não é revista aqui — a sala passa as fichas pelo mesmo caminho de qualquer
+// mudança de status.
+func (s *MatchSession) EndBattleStatusEffects() (chars []uuid.UUID, writes []statuseffect.Write) {
+	for _, charID := range s.CharactersWithStatusEffects() {
+		var kept []statuseffect.Effect
+		var gone []statuseffect.Effect
+		for _, e := range s.statusEffects[charID] {
+			if e.Kind == statuseffect.KindOpenGuard {
+				gone = append(gone, e.Clone())
+				continue
+			}
+			kept = append(kept, e)
+		}
+		if len(gone) == 0 {
+			continue
+		}
+		s.ReplaceStatusEffects(charID, kept)
+		chars = append(chars, charID)
+		for _, e := range gone {
+			writes = append(writes, statuseffect.Write{
+				Delete: true, Effect: e, Event: &statuseffect.Event{Change: statuseffect.ChangeRemoved},
+			})
+		}
+	}
+	return chars, writes
 }

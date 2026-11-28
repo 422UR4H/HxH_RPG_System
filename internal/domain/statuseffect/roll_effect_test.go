@@ -18,7 +18,7 @@ func sense(s se.Sense, lvl se.SenseLevel, dis bool, pen int, faces ...se.TouchFa
 }
 
 func TestRollEffectOf(t *testing.T) {
-	hit := se.Test{Skill: enum.Push, Domains: []se.Domain{se.DomainAttack}}
+	hit := se.Test{Skill: enum.Force, Domains: []se.Domain{se.DomainAttack}}
 	tests := []struct {
 		name    string
 		effects []se.Effect
@@ -156,7 +156,7 @@ func TestAptitudeAndSenseOfSkill(t *testing.T) {
 	for s, want := range map[enum.SkillName]se.Aptitude{
 		enum.Focus: se.AptitudeSpiritual, enum.WillPower: se.AptitudeSpiritual, enum.SelfKnowledge: se.AptitudeSpiritual,
 		enum.Coa: se.AptitudeSpiritual, enum.Mop: se.AptitudeSpiritual, enum.Aop: se.AptitudeSpiritual,
-		enum.Push: se.AptitudePhysical, enum.Vision: se.AptitudePhysical, "": "",
+		enum.Force: se.AptitudePhysical, enum.Vision: se.AptitudePhysical, "": "",
 	} {
 		if got := se.AptitudeOfSkill(s); got != want {
 			t.Errorf("AptitudeOfSkill(%q) = %q, want %q", s, got, want)
@@ -165,8 +165,8 @@ func TestAptitudeAndSenseOfSkill(t *testing.T) {
 	if sn, ok := se.SenseOfSkill(enum.Taste); !ok || sn != se.SenseTaste {
 		t.Errorf("SenseOfSkill(Taste) = %q, %v", sn, ok)
 	}
-	if _, ok := se.SenseOfSkill(enum.Push); ok {
-		t.Error("Push is not a sense skill")
+	if _, ok := se.SenseOfSkill(enum.Force); ok {
+		t.Error("Force is not a sense skill")
 	}
 	if _, ok := se.SenseOfSkill(""); ok {
 		t.Error("no skill is not a sense skill")

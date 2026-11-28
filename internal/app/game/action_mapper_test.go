@@ -28,7 +28,7 @@ func TestBuildAction_MapsTheWholePayload(t *testing.T) {
 		Attack: &AttackPayload{
 			Weapon: &weapon,
 			Hit:    RollCheckPayload{SkillName: enum.Accuracy.String()},
-			Damage: RollCheckPayload{SkillName: enum.Push.String()},
+			Damage: RollCheckPayload{SkillName: enum.Force.String()},
 			Charge: &RollCheckPayload{SkillName: enum.Brake.String()},
 		},
 		Defense: &DefensePayload{
@@ -96,7 +96,7 @@ func TestBuildAction_RejectsAnUnknownSkillName(t *testing.T) {
 		ActorID: uuid.New(),
 		Attack: &AttackPayload{
 			Hit:    RollCheckPayload{SkillName: "Kamehameha"},
-			Damage: RollCheckPayload{SkillName: enum.Push.String()},
+			Damage: RollCheckPayload{SkillName: enum.Force.String()},
 		},
 	}
 	if _, err := buildAction(p.ActorID, p); err == nil {
@@ -111,7 +111,7 @@ func TestBuildAction_RejectsAnUnknownWeapon(t *testing.T) {
 		Attack: &AttackPayload{
 			Weapon: &bogus,
 			Hit:    RollCheckPayload{SkillName: enum.Accuracy.String()},
-			Damage: RollCheckPayload{SkillName: enum.Push.String()},
+			Damage: RollCheckPayload{SkillName: enum.Force.String()},
 		},
 	}
 	if _, err := buildAction(p.ActorID, p); err == nil {
@@ -726,10 +726,10 @@ func TestBuildAction_DerivesTheHitSkill(t *testing.T) {
 	p := ActionPayload{
 		ActorID: actorCharID,
 		Attack: &AttackPayload{
-			// A real skill, and the wrong one: a front hand-writing Push onto the hit is
+			// A real skill, and the wrong one: a front hand-writing Force onto the hit is
 			// exactly what the combat catalogue exists to prevent.
-			Hit:    RollCheckPayload{SkillName: enum.Push.String()},
-			Damage: RollCheckPayload{SkillName: enum.Push.String()},
+			Hit:    RollCheckPayload{SkillName: enum.Force.String()},
+			Damage: RollCheckPayload{SkillName: enum.Force.String()},
 		},
 	}
 
@@ -873,28 +873,4 @@ func TestBuildAction_DerivesReactionSkillNames(t *testing.T) {
 			t.Fatal("closedEscape without an Evasion entry in the payload must still read Evasion")
 		}
 	})
-}
-
-func TestBuildEditActionDamageSkill(t *testing.T) {
-	grab := "Grab"
-	ma, err := buildEditAction(EditActionPayload{DamageSkill: &grab})
-	if err != nil {
-		t.Fatalf("buildEditAction: %v", err)
-	}
-	if ma.DamageSkill == nil || *ma.DamageSkill != enum.Grab {
-		t.Fatalf("DamageSkill = %v, want Grab", ma.DamageSkill)
-	}
-
-	unknown := "Telekinesis"
-	if _, err := buildEditAction(EditActionPayload{DamageSkill: &unknown}); err == nil {
-		t.Fatal("an unknown skill name was accepted")
-	}
-
-	ma, err = buildEditAction(EditActionPayload{})
-	if err != nil {
-		t.Fatalf("buildEditAction: %v", err)
-	}
-	if ma.DamageSkill != nil {
-		t.Fatal("an absent damageSkill must stay nil — untouched")
-	}
 }

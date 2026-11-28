@@ -458,8 +458,9 @@ type EditActionPayload struct {
 	Conditions []ConditionEditPayload `json:"conditions,omitempty"`
 	Skills     *[]ActionSkillPayload  `json:"skills,omitempty"`
 	TargetIDs  *[]uuid.UUID           `json:"targetIds,omitempty"`
-	// DamageSkill swaps the skill that measures the damage of the action's attack (Push by
-	// default): any valid skill name. Absent = untouched; "Push" puts it back.
+	// DamageSkill no longer edits anything: Force always measures the damage. The field stays
+	// only so an old client that still sends it is REFUSED (invalid_payload) instead of having
+	// the key silently dropped while the rest of the edit applies.
 	DamageSkill *string `json:"damageSkill,omitempty"`
 	// EscapeLanding is where the master puts the piece of the escape named by ActionID IF it
 	// fails (front-combat-phases.md §6A.5, B13) — the engine has no rule for where a failed
@@ -704,8 +705,8 @@ type ResolutionUpdatedPayload struct {
 	// It is NOT an error MESSAGE: a fault here does not mean the operation failed. The turn
 	// resolved, these numbers are real, and one part of the collision is missing from them.
 	Errors []ResolutionErrorPayload `json:"errors,omitempty"`
-	// DamageSkill names the skill that measured the attack's damage — "Push" unless the master
-	// swapped it (edit_action damageSkill). Absent when the action has no attack. Public on a
+	// DamageSkill names the skill that measured the attack's damage — always "Force" (turns
+	// closed before the swap went away may carry another in the history). Absent when the action has no attack. Public on a
 	// settled resolution, like rawDamage.
 	DamageSkill string `json:"damageSkill,omitempty"`
 	// Conditions is every master condition in force on the open turn — what the master's

@@ -39,7 +39,7 @@ func (f *combatFixture) enqueueFeintingAttackFrom(t *testing.T, conn *websocket.
 		"attack": map[string]any{
 			"weapon": "Sword",
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 }

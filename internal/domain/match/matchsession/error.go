@@ -63,12 +63,9 @@ var (
 	// ErrLandingOutOfGrid means the master put a failed escape's piece on a cell the board
 	// does not have.
 	ErrLandingOutOfGrid = errtext.Sentence("Esse pouso fica fora do mapa.")
-	// ErrNoDamageToMeasure means a damageSkill edit named an action that carries no attack —
-	// there is no damage for a skill to measure.
-	ErrNoDamageToMeasure = errtext.Sentence("Essa ação não tem ataque, então não há dano para medir.")
 	// ErrQueuedEditUnsupported means an edit_action on a QUEUED action tried to change its
 	// targets or its skill list. See ApplyMasterAction for what lifting it takes.
-	ErrQueuedEditUnsupported = errtext.Sentence("Uma ação na fila só aceita mudar as condições e a perícia de dano.")
+	ErrQueuedEditUnsupported = errtext.Sentence("Uma ação na fila só aceita mudar as condições.")
 	// ErrStackedOnPending: o pull_action nomeou um movimento empilhado num movimento do mesmo
 	// personagem que ainda está na fila (spec 2026-11-06 D4). Um empilhado nunca abre antes do
 	// anterior; puxe a cabeça primeiro. Nada muda: nenhum turno fecha, nenhum preço congela.

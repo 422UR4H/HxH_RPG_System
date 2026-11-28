@@ -26,7 +26,7 @@ func fullAction() *action.Action {
 		action.ActionSpeed{Bar: 2, RollCheck: action.RollCheck{SkillName: "Legerity", SkillValue: 4, Result: 11}},
 		&action.RollCheck{SkillName: "Feint", Result: 7},
 		&action.Move{Category: enum.MoveCategory("Dash"), From: &from, Position: [3]int{4, 4, 0}, FinalSpeed: 9},
-		&action.Attack{Weapon: &weapon, Hit: action.RollCheck{SkillName: "Accuracy", Result: 13}, Damage: action.RollCheck{SkillName: "Push"}},
+		&action.Attack{Weapon: &weapon, Hit: action.RollCheck{SkillName: "Accuracy", Result: 13}, Damage: action.RollCheck{SkillName: "Force"}},
 		&action.Defense{Weapon: &weapon, RollCheck: action.RollCheck{SkillName: "Defense"}},
 		&action.Dodge{RollCheck: action.RollCheck{SkillName: "Dodge"}},
 		&action.Trigger{},
@@ -132,5 +132,19 @@ func TestUnmarshalRefusesABrokenPiece(t *testing.T) {
 	_, err := actioncodec.Unmarshal(uuid.New(), uuid.New(), []byte(`{"speed":{},"attack":"not an object"}`))
 	if err == nil {
 		t.Fatal("Unmarshal accepted an attack that is not an object")
+	}
+}
+
+// TestUnmarshalIgnoresLegacyDamageSkillKey: attacks saved while the master could swap the
+// damage skill carry a "DamageSkill" key. Reading one must not fail.
+func TestUnmarshalIgnoresLegacyDamageSkillKey(t *testing.T) {
+	raw := []byte(`{"attack":{"Hit":{},"Damage":{},"DamageSkill":"Grab"}}`)
+	id, actor := uuid.New(), uuid.New()
+	got, err := actioncodec.Unmarshal(id, actor, raw)
+	if err != nil {
+		t.Fatalf("Unmarshal with a legacy DamageSkill key: %v", err)
+	}
+	if got.Attack == nil {
+		t.Fatal("the attack was lost")
 	}
 }

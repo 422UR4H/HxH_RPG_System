@@ -64,7 +64,7 @@ func newEscapeEditFixture(t *testing.T) *escapeEditFixture {
 		&action.Attack{
 			Weapon: &weapon,
 			Hit:    action.RollCheck{SkillName: enum.Accuracy.String()},
-			Damage: action.RollCheck{SkillName: enum.Push.String()},
+			Damage: action.RollCheck{SkillName: enum.Force.String()},
 		},
 		nil, nil, nil, nil,
 	)

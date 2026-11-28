@@ -281,6 +281,9 @@ func (r *Room) handleRemoveStatusEffect(client *Client, raw json.RawMessage) {
 // sem a trava, manda a cada um a lista nova que ele vê. actionID (opcional) é a âncora do
 // evento: precisa ser a action do turno aberto ou uma reação dela. restore é o
 // restoreCancelledActions da remoção (giveBackLocked); false para aplicar e editar.
+//
+// O que vem depois do caso de uso (settleStatusChangeLocked + announceStatusChange) é o mesmo
+// de uma mudança do sistema sem cliente (o fim da batalha, endBattleStatusEffectsLocked).
 func (r *Room) runStatusEffectChange(
 	client *Client, actionID *uuid.UUID, restore bool,
 	op func(*matchsession.MatchSession, time.Time) (appmatch.StatusEffectChange, error),
@@ -301,99 +304,180 @@ func (r *Room) runStatusEffectChange(
 		r.refuseStatusEffect(client, errStatusActionID)
 		return
 	}
-	// Quem vê cada peça antes da mudança: um Escondido que entra, sai ou troca de lista tira
-	// ou devolve peças (decisão do dono 6). O retrato é barato (peças × jogadores conectados) e
-	// precisa ser tirado antes do caso de uso, que muda a sessão.
-	before := r.pieceSightLocked()
-	// O mesmo para o histórico, por jogador da sessão (conectado ou não): quem enxergava cada
-	// personagem e para quem ele estava Escondido logo antes da mudança.
-	instant := statusInstant{
-		at: r.now().Truncate(time.Microsecond), actionID: actionID,
-		sight: r.sessionSightLocked(), hidden: r.sessionHiddenFromLocked(),
-	}
-	// O retrato da fila que o mestre recebeu antes da mudança: a re-derivação dos status
-	// (rederiveForStatus) pode mudar velocidades e anotações das ações na fila.
-	queuedBefore := r.queuedSnapshotLocked(session)
-	change, err := op(session, instant.at)
+	before := r.statusBeforeLocked(session, actionID)
+	change, err := op(session, before.instant.at)
 	if err != nil {
 		r.mu.Unlock()
 		r.refuseStatusEffect(client, err)
 		return
 	}
+	settled := r.settleStatusChangeLocked(session, before, change, statusUndo{allowed: true, restore: restore})
+	r.mu.Unlock()
+	r.announceStatusChange(settled)
+}
+
+// statusBefore é o retrato de logo antes de uma mudança de status, tirado sob r.mu antes de a
+// sessão mudar.
+type statusBefore struct {
+	// pieces: quem vê cada peça. Um Escondido que entra, sai ou troca de lista tira ou devolve
+	// peças (decisão do dono 6).
+	pieces map[uuid.UUID]map[string]bool
+	// instant: a hora, a âncora e, por jogador da sessão (conectado ou não), quem enxergava cada
+	// personagem e para quem ele estava Escondido — o que o histórico carimba.
+	instant statusInstant
+	// queued: a fila que o mestre recebeu antes da mudança; a re-derivação dos status
+	// (rederiveForStatus) pode mudar velocidades e anotações das ações na fila.
+	queued map[uuid.UUID][]byte
+}
+
+// statusBeforeLocked tira o retrato de antes. O retrato é barato (peças × jogadores
+// conectados) e precisa ser tirado antes da mudança. O chamador segura r.mu (escrita) e
+// session não é nil.
+func (r *Room) statusBeforeLocked(session *matchsession.MatchSession, actionID *uuid.UUID) statusBefore {
+	return statusBefore{
+		pieces: r.pieceSightLocked(),
+		instant: statusInstant{
+			at: r.now().Truncate(time.Microsecond), actionID: actionID,
+			sight: r.sessionSightLocked(), hidden: r.sessionHiddenFromLocked(),
+		},
+		queued: r.queuedSnapshotLocked(session),
+	}
+}
+
+// statusUndo diz se uma remoção pode desfazer um efeito aplicado no mesmo turno aberto. O
+// mestre pode (allowed; restore é o restoreCancelledActions dele); o sistema nunca: uma saída
+// do sistema é só uma remoção, gravada depois da aplicação, e nada volta.
+type statusUndo struct {
+	allowed, restore bool
+}
+
+// settledStatus é o que a seção crítica de uma mudança de status deixou para anunciar sem a
+// trava (announceStatusChange).
+type settledStatus struct {
+	session      *matchsession.MatchSession
+	change       appmatch.StatusEffectChange
+	before       map[uuid.UUID]map[string]bool
+	after        map[uuid.UUID]map[string]bool
+	hpChanged    []matchsession.DamagedCharacter
+	flushNow     bool
+	cancelWrites []*cancelledWrite
+	cancelled    []cancelledNotice
+	back         givenBack
+	followed     []uuid.UUID
+	requeued     []ActionQueuedPayload
+	turnID       uuid.UUID
+	res          *domainservice.TurnResolution
+	resAge       uint64
+}
+
+// settleStatusChangeLocked faz, na mesma seção crítica da mudança já aplicada na sessão, tudo o
+// que vem depois dela: o desfazer no turno (só com undo.allowed), o carimbo dos eventos, as
+// gravações seguras (holdStatusEffectWritesLocked), o que o conjunto novo recusa ou refaz, a
+// fila re-derivada e a resolução do turno aberto. O chamador segura r.mu (escrita) e session
+// não é nil.
+func (r *Room) settleStatusChangeLocked(
+	session *matchsession.MatchSession, before statusBefore, change appmatch.StatusEffectChange, undo statusUndo,
+) settledStatus {
 	// Remover um efeito aplicado neste mesmo turno desfaz a aplicação: nada dele é gravado.
-	removed := removedEffects(change.Writes)
+	var removed []statuseffect.Effect
 	var undone map[uuid.UUID]bool
-	change.Writes, undone = r.undoInTurnAppliesLocked(change.Writes)
-	r.stampStatusEventsLocked(change.Writes, instant)
+	if undo.allowed {
+		removed = removedEffects(change.Writes)
+		change.Writes, undone = r.undoInTurnAppliesLocked(change.Writes)
+	}
+	r.stampStatusEventsLocked(change.Writes, before.instant)
 	// O HP que a mudança moveu (a volta do Morto) é gravado como o de um fechamento falho: fica
 	// em unwrittenSheets e vai com a próxima gravação — fora de turno, o flushStatusEffects
 	// logo abaixo, na mesma transação das gravações de status; dentro de um turno, o fechamento.
-	hpChanged := hpChangesOf(change.HP)
-	r.markSheetsUnwrittenLocked(hpChanged)
-	var after map[uuid.UUID]map[string]bool
+	out := settledStatus{session: session, before: before.pieces, hpChanged: hpChangesOf(change.HP)}
+	r.markSheetsUnwrittenLocked(out.hpChanged)
 	if change.HiddenChanged {
-		after = r.pieceSightLocked()
+		out.after = r.pieceSightLocked()
 	}
-	flushNow := r.holdStatusEffectWritesLocked(change.Writes)
+	out.flushNow = r.holdStatusEffectWritesLocked(change.Writes)
 	// O conjunto novo vale já para o que está pendente (decisão 8): na mesma seção crítica.
-	cancelWrites, cancelled, turnTouched := r.dropRefusedByStatusLocked(session, change.Characters, changedEffects(change.Writes))
+	var turnTouched bool
+	out.cancelWrites, out.cancelled, turnTouched = r.dropRefusedByStatusLocked(session, change.Characters, changedEffects(change.Writes))
 	// O desfazer pedido devolve, na mesma seção crítica, o que o efeito desfeito cancelou (D3);
 	// a remoção já saiu da sessão, então ele não recusa mais nada.
-	back := r.giveBackLocked(removed, undone, restore)
-	if len(back.actions) > 0 || len(back.reactions) > 0 {
+	if undo.allowed {
+		out.back = r.giveBackLocked(removed, undone, undo.restore)
+	}
+	if len(out.back.actions) > 0 || len(out.back.reactions) > 0 {
 		turnTouched = true
 	}
 	// Um HP novo muda a prévia do turno aberto (quem morre com o golpe).
-	if len(hpChanged) > 0 && r.openTurnIDLocked() != uuid.Nil {
+	if len(out.hpChanged) > 0 && r.openTurnIDLocked() != uuid.Nil {
 		turnTouched = true
 	}
 	// Uma reação refeita pelo status leva junto as âncoras presas a ela.
-	followed := r.followAnchorsLocked()
+	out.followed = r.followAnchorsLocked()
 	// O mesmo caminho de uma velocidade editada (edit_action): a ação da fila que a mudança
 	// re-derivou volta ao mestre num action_queued, montado nesta seção crítica.
-	requeued := r.requeuedByStatusLocked(session, change.Characters, queuedBefore)
-	turnID := session.CurrentTurnID()
-	var res *domainservice.TurnResolution
-	var resAge uint64
+	out.requeued = r.requeuedByStatusLocked(session, change.Characters, before.queued)
+	out.turnID = session.CurrentTurnID()
 	if turnTouched {
-		res = session.ResolveOpenTurn()
-		resAge = r.stampResolutionLocked()
+		out.res = session.ResolveOpenTurn()
+		out.resAge = r.stampResolutionLocked()
 	}
-	r.mu.Unlock()
+	out.change = change
+	return out
+}
+
+// announceStatusChange grava (fora de turno) e anuncia o que settleStatusChangeLocked deixou.
+// O chamador NÃO segura nenhuma trava.
+func (r *Room) announceStatusChange(s settledStatus) {
 	// Grava antes de avisar, como as master actions: o aviso é a barreira de quem espera a
 	// gravação.
-	if flushNow {
+	if s.flushNow {
 		r.flushStatusEffects()
 	}
 	// Depois da tentativa de gravação, como o dano do fechamento: o mestre e o dono.
-	r.broadcastHpChanges(hpChanged)
-	for _, w := range cancelWrites {
+	r.broadcastHpChanges(s.hpChanged)
+	for _, w := range s.cancelWrites {
 		r.writeCancelledAction(w)
 	}
-	if len(cancelled) > 0 {
-		r.announceStatusCancelled(cancelled)
+	if len(s.cancelled) > 0 {
+		r.announceStatusCancelled(s.cancelled)
 	}
-	r.announceRestored(back)
+	r.announceRestored(s.back)
 	// A fila pode ter mudado de ordem: o mestre recebe a ação re-descrita, e a mesa, as barras.
-	for _, q := range requeued {
+	for _, q := range s.requeued {
 		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, q))
 	}
-	if len(cancelled) > 0 || len(back.actions) > 0 || len(requeued) > 0 {
-		r.broadcastBars(session)
+	if len(s.cancelled) > 0 || len(s.back.actions) > 0 || len(s.requeued) > 0 {
+		r.broadcastBars(s.session)
 	}
 	// Uma reação do turno aberto pode ter sido refeita: o mestre recebe a resolução nova.
-	r.publishResolution(turnID, res, resAge)
-	if change.HiddenChanged {
+	r.publishResolution(s.turnID, s.res, s.resAge)
+	if s.change.HiddenChanged {
 		// A peça primeiro (piece_removed/piece_moved), depois as barras e os status de quem a
 		// ganhou ou perdeu — a ordem que a névoa já segue quando uma peça anda.
-		r.relayHiddenChange(before, after)
+		r.relayHiddenChange(s.before, s.after)
 		// A peça que o mestre observa vê como o dono dela: um Escondido que muda muda a vista.
 		r.pushMasterPieceView()
 		r.syncSight()
 	}
 	// Sem Escondido, a visão não mudou: só os personagens tocados. Com ele, o syncSight acima
 	// já cobriu quem ainda tem efeitos; este cobre o que acabou de ficar sem nenhum.
-	r.syncStatusViews(append(append([]uuid.UUID(nil), change.Characters...), followed...))
+	r.syncStatusViews(append(append([]uuid.UUID(nil), s.change.Characters...), s.followed...))
+}
+
+// endBattleStatusEffectsLocked é o fim da batalha (spec §10, decisão do dono 2026-11-27): o
+// round passou do turno disputado para o livre, e o sistema tira toda Guarda aberta da mesa —
+// pelo mesmo caminho de uma remoção do mestre, sem âncora e sem desfazer (statusUndo zero),
+// mesmo para uma Guarda aberta aplicada neste turno: a aplicação e a saída são gravadas juntas
+// com o fechamento. Dentro de um turno aberto a saída vale já e vai em turnWrites.statusEffects;
+// fora dele, é gravada antes do anúncio. ok=false: nada a tirar. O chamador segura r.mu (escrita)
+// e session não é nil; anuncia com announceStatusChange depois de soltar a trava.
+func (r *Room) endBattleStatusEffectsLocked(session *matchsession.MatchSession) (settledStatus, bool) {
+	before := r.statusBeforeLocked(session, nil)
+	chars, writes := session.EndBattleStatusEffects()
+	if len(writes) == 0 {
+		return settledStatus{}, false
+	}
+	change := appmatch.StatusEffectChange{Characters: chars, Writes: writes}
+	return r.settleStatusChangeLocked(session, before, change, statusUndo{}), true
 }
 
 // queuedSnapshotLocked é o action_queued de cada ação da fila, serializado, como o mestre o

@@ -309,7 +309,7 @@ func TestE2E_TheNextCloseWritesTheSheetAFailedCloseLeft(t *testing.T) {
 		"attack": map[string]any{
 			"weapon": "Sword",
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 	// The count, not the type: the first attack's acknowledgement is already in the collector.
@@ -345,7 +345,7 @@ func TestE2E_TheNextCloseWritesTheSheetAFailedCloseLeft(t *testing.T) {
 		"attack": map[string]any{
 			"weapon": "Sword",
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 	if !awaitCount(pc, game.MsgTypeActionEnqueued, 3, 2*time.Second) {
