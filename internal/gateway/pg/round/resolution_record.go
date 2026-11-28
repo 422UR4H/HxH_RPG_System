@@ -45,8 +45,8 @@ import (
 // Tags are camelCase, like every other wire shape in this repo.
 type resolutionRecord struct {
 	IsSettled bool `json:"isSettled"`
-	// DamageSkill is what measured the damage ("Push" unless the master swapped it). Absent
-	// on rows from before Phase 8 — all of those were Push — and on a turn with no attack.
+	// DamageSkill is what measured the damage ("Force" unless the master swapped it). Absent
+	// on rows from before Phase 8 — all of those were Force — and on a turn with no attack.
 	DamageSkill  string                  `json:"damageSkill,omitempty"`
 	ActionResult rollResultRecord        `json:"actionResult"`
 	Characters   []characterResultRecord `json:"characters"`

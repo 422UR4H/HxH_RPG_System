@@ -64,9 +64,9 @@ type CharacterSheet struct {
 	EnergyExp   int
 	DefenseExp  int
 	// Strength
-	PushExp  int
-	GrabExp  int
-	CarryExp int
+	ForceExp  int
+	GrabExp   int
+	ChargeExp int
 	// Agility
 	QuicknessExp  int
 	AccelerateExp int

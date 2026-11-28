@@ -99,8 +99,8 @@ func TestE2E_EditQueuedAction(t *testing.T) {
 		t.Fatal("the master was never told an action was queued")
 	}
 	queued := lastActionQueued(t, masterMsgs)
-	if len(queued.Conditions) != 0 || queued.DamageSkill != "Push" {
-		t.Fatalf("fresh action_queued = %+v, want no condition and the default Push", queued)
+	if len(queued.Conditions) != 0 || queued.DamageSkill != "Force" {
+		t.Fatalf("fresh action_queued = %+v, want no condition and the default Force", queued)
 	}
 
 	t.Run("its targets are not editable on the queue", func(t *testing.T) {

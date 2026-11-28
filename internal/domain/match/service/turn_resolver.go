@@ -144,7 +144,7 @@ type TurnResolution struct {
 	Blows            []*battle.Blow
 	WallResults      []WallResult
 	IsSettled        bool
-	// DamageSkill names the skill that measured the attack's damage — "Push" unless the master
+	// DamageSkill names the skill that measured the attack's damage — "Force" unless the master
 	// swapped it. Empty when the action has no attack. Public, like rawDamage: once settled,
 	// whoever reads the damage reads what measured it.
 	DamageSkill string
@@ -495,7 +495,7 @@ func (tr TurnResolver) actorSheetMissing(in ResolveInput, a action.Action, res *
 	return true
 }
 
-// actorDamageSkill reads the attacker's skill that measures damage — Push, unless the master
+// actorDamageSkill reads the attacker's skill that measures damage — Force, unless the master
 // swapped it (Attack.DamageSkill, edit_action damageSkill).
 //
 // It nil-guards on purpose: the wall branch is NOT behind actorSheetMissing, so an action
@@ -507,7 +507,7 @@ func (tr TurnResolver) actorDamageSkill(in ResolveInput, a action.Action) int {
 	if !ok || cs == nil {
 		return 0
 	}
-	skill := enum.Push
+	skill := enum.Force
 	if a.Attack != nil {
 		skill = a.Attack.EffectiveDamageSkill()
 	}
@@ -736,7 +736,7 @@ func (tr TurnResolver) deriveHit(
 		SkillName: a.Attack.Hit.SkillName,
 		// Accuracy plus the proficiency with the weapon in hand: the swing is read on the
 		// skill, and knowing the weapon adds to it. Same shape as the damage, which reads
-		// the weapon's dice and adds the attacker's Push.
+		// the weapon's dice and adds the attacker's Force.
 		SkillValue: skill + tr.actorWeaponProficiency(in, a),
 		Condition:  a.Attack.Hit.Context.Condition,
 		AgainstID:  against,

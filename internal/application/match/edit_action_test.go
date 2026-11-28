@@ -152,7 +152,7 @@ func newOpenAttackFixture(t *testing.T) *editFixture {
 		&action.Attack{
 			Weapon: &weapon,
 			Hit:    action.RollCheck{SkillName: enum.Accuracy.String()},
-			Damage: action.RollCheck{SkillName: enum.Push.String()},
+			Damage: action.RollCheck{SkillName: enum.Force.String()},
 		},
 		nil, nil, nil, nil,
 	)
@@ -230,7 +230,7 @@ func newOpenAttackFixtureWithSkill(t *testing.T, skillName string) *editFixture 
 		&action.Attack{
 			Weapon: &weapon,
 			Hit:    action.RollCheck{SkillName: enum.Accuracy.String()},
-			Damage: action.RollCheck{SkillName: enum.Push.String()},
+			Damage: action.RollCheck{SkillName: enum.Force.String()},
 		},
 		nil, nil, nil, nil,
 	)
@@ -1141,9 +1141,9 @@ func TestEditActionDamageSkill(t *testing.T) {
 		return err
 	}
 	// grabbing raises the attacker's Grab and lifts the hit past the passive dodge, so the
-	// blow lands and RawDamage is read. Raising Grab can also move Push (they share an
+	// blow lands and RawDamage is read. Raising Grab can also move Force (they share an
 	// attribute), so the test reads both off the sheet instead of assuming either.
-	grabbing := func(t *testing.T) (f *editFixture, push, grab int) {
+	grabbing := func(t *testing.T) (f *editFixture, force, grab int) {
 		t.Helper()
 		f = newOpenAttackFixture(t)
 		cs, err := f.session.GetCharSheet(f.attackerID)
@@ -1153,24 +1153,24 @@ func TestEditActionDamageSkill(t *testing.T) {
 		if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(900), enum.Grab); err != nil {
 			t.Fatalf("IncreaseExpForSkill(Grab): %v", err)
 		}
-		push, _ = cs.GetValueForTestOfSkill(enum.Push)
+		force, _ = cs.GetValueForTestOfSkill(enum.Force)
 		grab, _ = cs.GetValueForTestOfSkill(enum.Grab)
-		if grab == push {
-			t.Fatal("fixture: Grab equals Push, the swap would prove nothing")
+		if grab == force {
+			t.Fatal("fixture: Grab equals Force, the swap would prove nothing")
 		}
 		f.editHitModifier(t, 20)
-		return f, push, grab
+		return f, force, grab
 	}
 
-	t.Run("an untouched attack is measured by Push", func(t *testing.T) {
+	t.Run("an untouched attack is measured by Force", func(t *testing.T) {
 		f := newOpenAttackFixture(t)
-		if got := f.currentResolution(t).DamageSkill; got != enum.Push.String() {
-			t.Fatalf("DamageSkill = %q, want Push", got)
+		if got := f.currentResolution(t).DamageSkill; got != enum.Force.String() {
+			t.Fatalf("DamageSkill = %q, want Force", got)
 		}
 	})
 
 	t.Run("Grab measures the damage, and the resolution says so", func(t *testing.T) {
-		f, push, grab := grabbing(t)
+		f, force, grab := grabbing(t)
 		before := f.currentResolution(t).CharacterResults[0].RawDamage
 		if err := editSkill(t, f, f.actionID, enum.Grab); err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -1179,12 +1179,12 @@ func TestEditActionDamageSkill(t *testing.T) {
 		if res.DamageSkill != enum.Grab.String() {
 			t.Fatalf("DamageSkill = %q, want Grab", res.DamageSkill)
 		}
-		if got, want := res.CharacterResults[0].RawDamage, before-push+grab; got != want {
-			t.Fatalf("RawDamage = %d, want %d (Push %d swapped for Grab %d)", got, want, push, grab)
+		if got, want := res.CharacterResults[0].RawDamage, before-force+grab; got != want {
+			t.Fatalf("RawDamage = %d, want %d (Force %d swapped for Grab %d)", got, want, force, grab)
 		}
 	})
 
-	t.Run("the capture keeps the original Push, from the system", func(t *testing.T) {
+	t.Run("the capture keeps the original Force, from the system", func(t *testing.T) {
 		f, _, _ := grabbing(t)
 		before := len(f.session.PeekOverridesFor(f.openTurn())) // the hit edit's row
 		if err := editSkill(t, f, f.actionID, enum.Grab); err != nil {
@@ -1201,17 +1201,17 @@ func TestEditActionDamageSkill(t *testing.T) {
 			t.Fatal("no damageSkill row was captured")
 		}
 		if row.Origin != matchDomain.OriginSystem {
-			t.Fatalf("Origin = %q, want system — the engine chose Push, not the player", row.Origin)
+			t.Fatalf("Origin = %q, want system — the engine chose Force, not the player", row.Origin)
 		}
-		if row.Original != enum.Push {
-			t.Fatalf("Original = %#v, want Push", row.Original)
+		if row.Original != enum.Force {
+			t.Fatalf("Original = %#v, want Force", row.Original)
 		}
 
-		if err := editSkill(t, f, f.actionID, enum.Push); err != nil {
-			t.Fatalf("Execute (back to Push): %v", err)
+		if err := editSkill(t, f, f.actionID, enum.Force); err != nil {
+			t.Fatalf("Execute (back to Force): %v", err)
 		}
 		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != before {
-			t.Fatalf("captured %d values after editing back to Push, want %d", got, before)
+			t.Fatalf("captured %d values after editing back to Force, want %d", got, before)
 		}
 	})
 

@@ -155,7 +155,7 @@ func BuildNinja() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Vitality: 210,
 
-		enum.Push: 210,
+		enum.Force: 210,
 
 		enum.Quickness:  210,
 		enum.Accelerate: 328,
@@ -333,9 +333,9 @@ func BuildPirate() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Energy: 69,
 
-		enum.Push:  210,
-		enum.Grab:  210,
-		enum.Carry: 210,
+		enum.Force:  210,
+		enum.Grab:   210,
+		enum.Charge: 210,
 
 		enum.Quickness:  69,
 		enum.Accelerate: 127,
@@ -391,9 +391,9 @@ func BuildMercenary() CharacterClass {
 		enum.Defense:  127,
 		enum.Energy:   69,
 
-		enum.Push:  69,
-		enum.Grab:  69,
-		enum.Carry: 127,
+		enum.Force:  69,
+		enum.Grab:   69,
+		enum.Charge: 127,
 
 		enum.Quickness:  127,
 		enum.Accelerate: 69,
@@ -467,9 +467,9 @@ func BuildTerrorist() CharacterClass {
 		enum.Vitality: 328,
 		enum.Defense:  210,
 
-		enum.Push:  127,
-		enum.Grab:  127,
-		enum.Carry: 210,
+		enum.Force:  127,
+		enum.Grab:   127,
+		enum.Charge: 210,
 
 		enum.Quickness: 127,
 
@@ -521,9 +521,9 @@ func BuildMonk() CharacterClass {
 		enum.Vitality: 210,
 		enum.Defense:  210,
 
-		enum.Push:  127,
-		enum.Grab:  127,
-		enum.Carry: 127,
+		enum.Force:  127,
+		enum.Grab:   127,
+		enum.Charge: 127,
 
 		enum.Quickness:  127,
 		enum.Accelerate: 127,
@@ -589,9 +589,9 @@ func BuildMilitary() CharacterClass {
 		enum.Vitality: 210,
 		enum.Defense:  210,
 
-		enum.Push:  210,
-		enum.Grab:  69,
-		enum.Carry: 127,
+		enum.Force:  210,
+		enum.Grab:   69,
+		enum.Charge: 127,
 
 		enum.Quickness: 127,
 
@@ -645,7 +645,7 @@ func BuildHunter() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Energy: 69,
 
-		enum.Carry: 127,
+		enum.Charge: 127,
 
 		enum.Quickness:  210,
 		enum.Accelerate: 127,
@@ -719,9 +719,9 @@ func BuildWeaponsMaster() CharacterClass {
 		enum.Defense:  127,
 		enum.Energy:   69,
 
-		enum.Push:  127,
-		enum.Grab:  127,
-		enum.Carry: 210,
+		enum.Force:  127,
+		enum.Grab:   127,
+		enum.Charge: 210,
 
 		enum.Quickness:  210,
 		enum.Accelerate: 69,

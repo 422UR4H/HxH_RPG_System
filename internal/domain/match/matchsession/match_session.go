@@ -595,9 +595,9 @@ func (s *MatchSession) ApplyMasterAction(
 		s.applySkillEdit(target, ma.Skills, masterUUID)
 	}
 	if ma.DamageSkill != nil {
-		// The ORIGINAL is the effective skill — Push when the field was never set — and its
-		// origin is the system: the engine chose Push, the player never did. Editing back to
-		// Push erases the capture, like any other edit-back.
+		// The ORIGINAL is the effective skill — Force when the field was never set — and its
+		// origin is the system: the engine chose Force, the player never did. Editing back to
+		// Force erases the capture, like any other edit-back.
 		s.captureOverride(target.GetID(), "damageSkill", match.OriginSystem, masterUUID,
 			target.Attack.EffectiveDamageSkill(), *ma.DamageSkill)
 		target.Attack.DamageSkill = *ma.DamageSkill

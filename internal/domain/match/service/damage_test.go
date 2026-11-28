@@ -68,9 +68,9 @@ func TestRawDamage(t *testing.T) {
 }
 
 // The same blow, with the same weapon and the same dice, hurts more in the hand of whoever
-// has more Push. Without this assertion an ignored parameter would pass: both totals would
+// has more Force. Without this assertion an ignored parameter would pass: both totals would
 // be equal and the test would stay green.
-func TestRawDamageAddsThePush(t *testing.T) {
+func TestRawDamageAddsTheForce(t *testing.T) {
 	cat := item.NewWeaponsManagerFactory().Build()
 	sword := enum.Sword
 	dice := []int{7, 3}
@@ -85,7 +85,7 @@ func TestRawDamageAddsThePush(t *testing.T) {
 	}
 
 	if strong-weak != 5 {
-		t.Fatalf("Push moved the damage by %d, want 5 (weak=%d strong=%d)", strong-weak, weak, strong)
+		t.Fatalf("Force moved the damage by %d, want 5 (weak=%d strong=%d)", strong-weak, weak, strong)
 	}
 }
 

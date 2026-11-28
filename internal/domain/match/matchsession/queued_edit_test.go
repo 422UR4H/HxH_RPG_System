@@ -150,8 +150,8 @@ func TestQueuedEdit_CancellingTakesTheEditsWithIt(t *testing.T) {
 		t.Fatalf("speed = %d with condition %+v, want the declared %d and none", cancelled.Speed.Result,
 			cancelled.Speed.Context.Condition, speed-7)
 	}
-	if got := cancelled.Attack.EffectiveDamageSkill(); got != enum.Push {
-		t.Fatalf("damage skill = %v, want Push back — the edit goes with the action", got)
+	if got := cancelled.Attack.EffectiveDamageSkill(); got != enum.Force {
+		t.Fatalf("damage skill = %v, want Force back — the edit goes with the action", got)
 	}
 }
 

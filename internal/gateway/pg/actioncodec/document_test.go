@@ -26,7 +26,7 @@ func fullAction() *action.Action {
 		action.ActionSpeed{Bar: 2, RollCheck: action.RollCheck{SkillName: "Legerity", SkillValue: 4, Result: 11}},
 		&action.RollCheck{SkillName: "Feint", Result: 7},
 		&action.Move{Category: enum.MoveCategory("Dash"), From: &from, Position: [3]int{4, 4, 0}, FinalSpeed: 9},
-		&action.Attack{Weapon: &weapon, Hit: action.RollCheck{SkillName: "Accuracy", Result: 13}, Damage: action.RollCheck{SkillName: "Push"}},
+		&action.Attack{Weapon: &weapon, Hit: action.RollCheck{SkillName: "Accuracy", Result: 13}, Damage: action.RollCheck{SkillName: "Force"}},
 		&action.Defense{Weapon: &weapon, RollCheck: action.RollCheck{SkillName: "Defense"}},
 		&action.Dodge{RollCheck: action.RollCheck{SkillName: "Dodge"}},
 		&action.Trigger{},

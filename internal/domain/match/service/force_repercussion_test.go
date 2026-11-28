@@ -16,48 +16,48 @@ import (
 )
 
 // This file proves the LINK the spec's Task 2 verification actually asked for: two
-// CHARACTERS, same weapon, same dice, different Push, different final damage — not just the
-// RawDamage formula in isolation (damage_test.go's TestRawDamageAddsThePush covers that, and
-// still does). Round 1 review found this gap: TestRawDamageAddsThePush calls
-// service.RawDamage with push as a literal int, which never touches actorDamageSkill, skillValueOf,
+// CHARACTERS, same weapon, same dice, different Force, different final damage — not just the
+// RawDamage formula in isolation (damage_test.go's TestRawDamageAddsTheForce covers that, and
+// still does). Round 1 review found this gap: TestRawDamageAddsTheForce calls
+// service.RawDamage with force as a literal int, which never touches actorDamageSkill, skillValueOf,
 // in.Sheets, or the two real call sites in turn_resolver.go. Without this file, actorDamageSkill
-// could be reverted to always returning 0 (a bad merge, a wrong map key, Push swapped for
+// could be reverted to always returning 0 (a bad merge, a wrong map key, Force swapped for
 // another enum) and every test in the suite would still pass.
 
-// sheetWithPush is plainSheet's (character_collision_test.go) non-zero-Push sibling: real XP
-// raised on the real Push skill, read back through the same GetValueForTestOfSkill path the
+// sheetWithForce is plainSheet's (character_collision_test.go) non-zero-Force sibling: real XP
+// raised on the real Force skill, read back through the same GetValueForTestOfSkill path the
 // resolver itself uses — not a hardcoded number this test does not own.
-func sheetWithPush(t *testing.T) (*sheetPkg.CharacterSheet, int) {
+func sheetWithForce(t *testing.T) (*sheetPkg.CharacterSheet, int) {
 	t.Helper()
 	cs := plainSheet(t)
-	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(500), enum.Push); err != nil {
-		t.Fatalf("IncreaseExpForSkill(Push): %v", err)
+	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(500), enum.Force); err != nil {
+		t.Fatalf("IncreaseExpForSkill(Force): %v", err)
 	}
-	push, err := cs.GetValueForTestOfSkill(enum.Push)
+	force, err := cs.GetValueForTestOfSkill(enum.Force)
 	if err != nil {
-		t.Fatalf("GetValueForTestOfSkill(Push): %v", err)
+		t.Fatalf("GetValueForTestOfSkill(Force): %v", err)
 	}
-	if push == 0 {
-		t.Fatal("test setup: Push is still 0 — the fixture is not doing its job")
+	if force == 0 {
+		t.Fatal("test setup: Force is still 0 — the fixture is not doing its job")
 	}
-	return cs, push
+	return cs, force
 }
 
-// TestSeedChain_ActorPushRaisesDamageAgainstACharacter is the character-branch half of the
-// repercussion: two attackers, same sword, same dice — one with Push 0, one with real Push —
-// against the same kind of target. Only the attacker's Push differs, and RawDamage on the
-// resolved CharacterResult must differ by exactly that Push, end to end through
+// TestSeedChain_ActorForceRaisesDamageAgainstACharacter is the character-branch half of the
+// repercussion: two attackers, same sword, same dice — one with Force 0, one with real Force —
+// against the same kind of target. Only the attacker's Force differs, and RawDamage on the
+// resolved CharacterResult must differ by exactly that Force, end to end through
 // TurnResolver.Resolve → seedChain → actorDamageSkill → skillValueOf.
-func TestSeedChain_ActorPushRaisesDamageAgainstACharacter(t *testing.T) {
+func TestSeedChain_ActorForceRaisesDamageAgainstACharacter(t *testing.T) {
 	actorID, targetID := uuid.New(), uuid.New()
 	sword := enum.Sword
 	tn := attackTurn(actorID, targetID, []int{10, 8}, []int{9, 3}, &sword)
 
 	weak := service.TurnResolver{}.Resolve(resolveInput(t, actorID, targetID, tn))
 
-	pushed, wantPush := sheetWithPush(t)
+	forced, wantForce := sheetWithForce(t)
 	in := resolveInput(t, actorID, targetID, tn)
-	in.Sheets[actorID] = pushed
+	in.Sheets[actorID] = forced
 	strong := service.TurnResolver{}.Resolve(in)
 
 	if len(weak.CharacterResults) != 1 || len(strong.CharacterResults) != 1 {
@@ -65,26 +65,26 @@ func TestSeedChain_ActorPushRaisesDamageAgainstACharacter(t *testing.T) {
 			len(weak.CharacterResults), len(strong.CharacterResults))
 	}
 	gotRaw := strong.CharacterResults[0].RawDamage - weak.CharacterResults[0].RawDamage
-	if gotRaw != wantPush {
-		t.Fatalf("RawDamage moved by %d, want %d (the attacker's Push) — weak=%d strong=%d",
-			gotRaw, wantPush, weak.CharacterResults[0].RawDamage, strong.CharacterResults[0].RawDamage)
+	if gotRaw != wantForce {
+		t.Fatalf("RawDamage moved by %d, want %d (the attacker's Force) — weak=%d strong=%d",
+			gotRaw, wantForce, weak.CharacterResults[0].RawDamage, strong.CharacterResults[0].RawDamage)
 	}
 	// The armed attack lands against a bare-handed (plain-sheet) defense, which is not
-	// reduced (see TestResolve_CharacterBranch), so the Push shows up whole in the final
+	// reduced (see TestResolve_CharacterBranch), so the Force shows up whole in the final
 	// number too — this is the "dano final" the spec's verification names.
 	gotEffective := strong.CharacterResults[0].EffectiveDamage - weak.CharacterResults[0].EffectiveDamage
-	if gotEffective != wantPush {
-		t.Fatalf("EffectiveDamage moved by %d, want %d (the attacker's Push) — weak=%d strong=%d",
-			gotEffective, wantPush,
+	if gotEffective != wantForce {
+		t.Fatalf("EffectiveDamage moved by %d, want %d (the attacker's Force) — weak=%d strong=%d",
+			gotEffective, wantForce,
 			weak.CharacterResults[0].EffectiveDamage, strong.CharacterResults[0].EffectiveDamage)
 	}
 }
 
-// TestWallBranch_ActorPushRaisesDamageAgainstAWall is the wall-branch half: the wall attack
+// TestWallBranch_ActorForceRaisesDamageAgainstAWall is the wall-branch half: the wall attack
 // is NOT behind actorSheetMissing, so it is the one place a broken actorDamageSkill wire could hide
 // even after the character branch was covered. Same weapon, same dice, an indestructible
 // margin (huge HP, zero resistance) so EffectiveDamage tracks RawDamage 1:1 with no clamping.
-func TestWallBranch_ActorPushRaisesDamageAgainstAWall(t *testing.T) {
+func TestWallBranch_ActorForceRaisesDamageAgainstAWall(t *testing.T) {
 	actorID := uuid.New()
 	wallID := uuid.New()
 	sword := enum.Sword
@@ -112,10 +112,10 @@ func TestWallBranch_ActorPushRaisesDamageAgainstAWall(t *testing.T) {
 	weakIn.Turn = buildAttackOnWall()
 	weak := service.TurnResolver{}.Resolve(weakIn)
 
-	pushed, wantPush := sheetWithPush(t)
+	forced, wantForce := sheetWithForce(t)
 	strongIn := baseInput()
 	strongIn.Turn = buildAttackOnWall()
-	strongIn.Sheets = map[uuid.UUID]*sheetPkg.CharacterSheet{actorID: pushed}
+	strongIn.Sheets = map[uuid.UUID]*sheetPkg.CharacterSheet{actorID: forced}
 	strong := service.TurnResolver{}.Resolve(strongIn)
 
 	if len(weak.WallResults) != 1 || len(strong.WallResults) != 1 {
@@ -123,8 +123,8 @@ func TestWallBranch_ActorPushRaisesDamageAgainstAWall(t *testing.T) {
 			len(weak.WallResults), len(strong.WallResults))
 	}
 	got := strong.WallResults[0].EffectiveDamage - weak.WallResults[0].EffectiveDamage
-	if got != wantPush {
-		t.Fatalf("wall EffectiveDamage moved by %d, want %d (the attacker's Push) — weak=%d strong=%d",
-			got, wantPush, weak.WallResults[0].EffectiveDamage, strong.WallResults[0].EffectiveDamage)
+	if got != wantForce {
+		t.Fatalf("wall EffectiveDamage moved by %d, want %d (the attacker's Force) — weak=%d strong=%d",
+			got, wantForce, weak.WallResults[0].EffectiveDamage, strong.WallResults[0].EffectiveDamage)
 	}
 }

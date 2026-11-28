@@ -24,8 +24,8 @@ type Attack struct {
 	Hit    RollCheck
 	Damage RollCheck
 	// DamageSkill is the skill that measures this attack's damage. The player does not choose
-	// it — the weapon deals the damage, and Push measures it (front-combat-phases.md §4.6) —
-	// but the master may swap it (edit_action damageSkill: Grab, or another). Zero means Push:
+	// it — the weapon deals the damage, and Force measures it (front-combat-phases.md §4.6) —
+	// but the master may swap it (edit_action damageSkill: Grab, or another). Zero means Force:
 	// every attack, and every row persisted before the field existed.
 	//
 	// Deliberately NOT Damage.SkillName. That is the field the player sends and the server
@@ -54,10 +54,10 @@ type Attack struct {
 // as "None".
 const DamageSkillNone enum.SkillName = "None"
 
-// EffectiveDamageSkill is DamageSkill with its zero value read as Push.
+// EffectiveDamageSkill is DamageSkill with its zero value read as Force.
 func (a Attack) EffectiveDamageSkill() enum.SkillName {
 	if a.DamageSkill == "" {
-		return enum.Push
+		return enum.Force
 	}
 	return a.DamageSkill
 }

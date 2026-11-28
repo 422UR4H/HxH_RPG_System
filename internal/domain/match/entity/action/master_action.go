@@ -46,7 +46,7 @@ type MasterAction struct {
 	// change WHICH tests exist; this changes how they are read. The two surfaces are
 	// deliberately separate — see combat-engine.md § A edição do mestre.
 	Conditions []ConditionEdit
-	// DamageSkill swaps the skill that measures the damage of the action's attack (Push by
+	// DamageSkill swaps the skill that measures the damage of the action's attack (Force by
 	// default). nil = not sent, untouched.
 	DamageSkill *enum.SkillName
 	Move        *Move

@@ -75,7 +75,7 @@ func TestE2E_ReconnectingTargetWithOnlyTheSeatedDefaultHasNoOwnReaction(t *testi
 	defer conn.Close() //nolint:errcheck
 	if len(full.OwnReactions) != 0 {
 		t.Fatalf("ownReactions = %+v, want none — the seated default is not the target's answer", full.OwnReactions)
-	}	// The base value a passive test reads travels with the match state (2D10 → 11).
+	} // The base value a passive test reads travels with the match state (2D10 → 11).
 	if full.PassiveValue != 11 {
 		t.Fatalf("passiveValue = %d, want 11", full.PassiveValue)
 	}
@@ -292,7 +292,7 @@ func TestE2E_MasterOwnReactionsCarryOnlyTheNPCs(t *testing.T) {
 		"attack": map[string]any{
 			"weapon": "Sword",
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 	if !mc.await(game.MsgTypeActionQueued, 2*time.Second) {

@@ -349,10 +349,10 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	if err != nil {
 		return nil, err
 	}
-	strSkill := skill.NewCommonSkill(enum.Push, *exp.Clone(), str, physSkills)
-	skills[enum.Push] = strSkill
+	strSkill := skill.NewCommonSkill(enum.Force, *exp.Clone(), str, physSkills)
+	skills[enum.Force] = strSkill
 	skills[enum.Grab] = strSkill.Clone(enum.Grab)
-	skills[enum.Carry] = strSkill.Clone(enum.Carry)
+	skills[enum.Charge] = strSkill.Clone(enum.Charge)
 
 	agi, err := physAttrs.Get(enum.Agility)
 	if err != nil {

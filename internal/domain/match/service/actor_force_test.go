@@ -10,55 +10,55 @@ import (
 	"github.com/google/uuid"
 )
 
-// pushedSheet builds a fresh sheet and raises its Push through real XP, so the test reads
+// forcedSheet builds a fresh sheet and raises its Force through real XP, so the test reads
 // whatever the character sheet's own skill math actually produces instead of asserting a
-// number this test does not own. A round1-review fix: TestRawDamageAddsThePush proves the
-// FORMULA (an int in, an int out) but never exercises actorPush, skillValueOf or in.Sheets —
-// the real link the spec asked for. This file and push_repercussion_test.go close that gap.
-func pushedSheet(t *testing.T) (*csSheet.CharacterSheet, int) {
+// number this test does not own. A round1-review fix: TestRawDamageAddsTheForce proves the
+// FORMULA (an int in, an int out) but never exercises actorForce, skillValueOf or in.Sheets —
+// the real link the spec asked for. This file and force_repercussion_test.go close that gap.
+func forcedSheet(t *testing.T) (*csSheet.CharacterSheet, int) {
 	t.Helper()
 	playerUUID := uuid.New()
 	cs, err := csSheet.NewCharacterSheetFactory().Build(
 		&playerUUID, nil, nil,
-		csSheet.CharacterProfile{NickName: "Pusher", FullName: "Push Test Subject"},
+		csSheet.CharacterProfile{NickName: "Forcer", FullName: "Force Test Subject"},
 		nil, nil, nil,
 	)
 	if err != nil {
 		t.Fatalf("factory.Build error: %v", err)
 	}
-	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(500), enum.Push); err != nil {
-		t.Fatalf("IncreaseExpForSkill(Push): %v", err)
+	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(500), enum.Force); err != nil {
+		t.Fatalf("IncreaseExpForSkill(Force): %v", err)
 	}
-	push, err := cs.GetValueForTestOfSkill(enum.Push)
+	force, err := cs.GetValueForTestOfSkill(enum.Force)
 	if err != nil {
-		t.Fatalf("GetValueForTestOfSkill(Push): %v", err)
+		t.Fatalf("GetValueForTestOfSkill(Force): %v", err)
 	}
-	if push == 0 {
-		t.Fatal("test setup: Push is still 0 after raising its exp — the fixture is not doing its job")
+	if force == 0 {
+		t.Fatal("test setup: Force is still 0 after raising its exp — the fixture is not doing its job")
 	}
-	return cs, push
+	return cs, force
 }
 
-// TestActorPush_ReadsTheAttackersSheet proves actorPush is not a dead wire: given a real
-// sheet with a non-zero Push, in.Sheets, and the actor's own ID, it returns exactly what
-// GetValueForTestOfSkill(Push) reads off that sheet — not a hardcoded, decoupled number.
-func TestActorPush_ReadsTheAttackersSheet(t *testing.T) {
+// TestActorForce_ReadsTheAttackersSheet proves actorForce is not a dead wire: given a real
+// sheet with a non-zero Force, in.Sheets, and the actor's own ID, it returns exactly what
+// GetValueForTestOfSkill(Force) reads off that sheet — not a hardcoded, decoupled number.
+func TestActorForce_ReadsTheAttackersSheet(t *testing.T) {
 	actorID := uuid.New()
-	cs, wantPush := pushedSheet(t)
+	cs, wantForce := forcedSheet(t)
 
 	a := action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{},
 		nil, nil, nil, nil, nil, nil, nil)
 	in := ResolveInput{Sheets: map[uuid.UUID]*csSheet.CharacterSheet{actorID: cs}}
 
-	if got := (TurnResolver{}).actorDamageSkill(in, *a); got != wantPush {
-		t.Fatalf("actorDamageSkill() = %d, want %d (the sheet's own Push)", got, wantPush)
+	if got := (TurnResolver{}).actorDamageSkill(in, *a); got != wantForce {
+		t.Fatalf("actorDamageSkill() = %d, want %d (the sheet's own Force)", got, wantForce)
 	}
 }
 
-// TestActorPush_MissingSheetIsZero pins the nil-guard the wall branch depends on: it is NOT
+// TestActorForce_MissingSheetIsZero pins the nil-guard the wall branch depends on: it is NOT
 // behind actorSheetMissing, so an action whose actor sheet never reached the resolver must
 // not panic here — zero is the honest answer.
-func TestActorPush_MissingSheetIsZero(t *testing.T) {
+func TestActorForce_MissingSheetIsZero(t *testing.T) {
 	actorID := uuid.New()
 	a := action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{},
 		nil, nil, nil, nil, nil, nil, nil)
@@ -79,10 +79,10 @@ func TestActorPush_MissingSheetIsZero(t *testing.T) {
 }
 
 // TestActorDamageSkill_ReadsTheMastersChoice: with the master's Grab on the attack, the damage
-// is measured by the sheet's Grab, not its Push.
+// is measured by the sheet's Grab, not its Force.
 func TestActorDamageSkill_ReadsTheMastersChoice(t *testing.T) {
 	actorID := uuid.New()
-	cs, _ := pushedSheet(t)
+	cs, _ := forcedSheet(t)
 	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(900), enum.Grab); err != nil {
 		t.Fatalf("IncreaseExpForSkill(Grab): %v", err)
 	}
@@ -100,10 +100,10 @@ func TestActorDamageSkill_ReadsTheMastersChoice(t *testing.T) {
 }
 
 // The master's "no skill measures this blow" (edit_action damageSkill "None"): the damage reads
-// zero from the sheet, however strong the Push.
+// zero from the sheet, however strong the Force.
 func TestActorDamageSkill_NoneAddsNothing(t *testing.T) {
 	actorID := uuid.New()
-	cs, _ := pushedSheet(t)
+	cs, _ := forcedSheet(t)
 	a := action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{},
 		nil, nil, &action.Attack{DamageSkill: action.DamageSkillNone}, nil, nil, nil, nil)
 	in := ResolveInput{Sheets: map[uuid.UUID]*csSheet.CharacterSheet{actorID: cs}}

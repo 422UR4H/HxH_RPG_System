@@ -39,7 +39,7 @@ func (f *combatFixture) enqueueMoveAttackFrom(
 		"attack": map[string]any{
 			"weapon": weapon,
 			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
-			"damage": map[string]any{"skillName": enum.Push.String()},
+			"damage": map[string]any{"skillName": enum.Force.String()},
 		},
 	})
 }
