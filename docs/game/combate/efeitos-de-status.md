@@ -68,7 +68,7 @@ registra o número é o mestre.
 
 **Vida**
 
-- **Sangrando**, **Queimando**, **Congelando**, **Envenenado** — cada um tem um número por round (começa em 1), que a mesa vê e o mestre edita. O sistema ainda não tira a Vida por conta própria: quem desconta é o mestre, quando a cena pede. **Veneno é fonte, não status:** um veneno pode pôr Envenenado, Paralisado, Debilitado, Visão anulada ou Inconsciente, conforme o que a história diz; "Envenenado" é só o número do veneno.
+- **Sangrando**, **Queimando**, **Congelando**, **Envenenado** — cada um tem um número por round (começa em 1), que a mesa vê e o mestre edita. Saem quando o mestre os tira. **Veneno é fonte, não status:** um veneno pode pôr Envenenado, Paralisado, Debilitado, Visão anulada ou Inconsciente, conforme o que a história diz; "Envenenado" é só o número do veneno.
 
 **Ar**
 
