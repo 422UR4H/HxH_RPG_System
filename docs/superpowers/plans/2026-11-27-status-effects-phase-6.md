@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Write the player-facing rules for status effects (principles, combat chapter, master doc, dash fix, Força de Vontade) and rename the Strength skills `Push → Force` ("Forçar") and `Carry → Charge` ("Carga") across back, DB and front.
+**Goal:** Write the player-facing rules for status effects (principles, combat chapter, master doc, dash fix, Força de Vontade); rename the Strength skills `Push → Force` ("Forçar") and `Carry → Charge` ("Carga") across back, DB and front; make Force the only damage skill (the master's damage-skill swap goes away, back and front); and make the server take Guarda aberta off at the end of battle.
 
-**Architecture:** Docs-only tasks in `docs/game/` (PT, player language, no code; dev footer carries TODOs). The rename is a pure rename: enum values, sheet columns (`push_exp`/`carry_exp`), every persisted JSONB skill-name value (rewritten only under skill-name keys, never loose text), parity fixture, front sheet keys and the one match constant that lists the damage skills. No rule or combat behaviour changes.
+**Architecture:** Docs-only tasks in `docs/game/` (PT, player language, no code; dev footer carries TODOs). The rename is a pure rename: enum values, sheet columns (`push_exp`/`carry_exp`), every persisted JSONB skill-name value (rewritten only under skill-name keys, never loose text), parity fixture, front sheet keys and the one match constant that lists the damage skills. Two owner-approved behaviour changes (2026-11-27): (a) Force always measures damage — `edit_action.damageSkill` (incl. `"None"`) is removed; (b) switching the round from disputed to free ("fim da batalha", spec §10) removes every Guarda aberta, as the system.
 
 **Tech Stack:** Go 1.23, PostgreSQL + goose, React/TS (Vite, vitest).
 
@@ -25,15 +25,16 @@
 - Never rename the verb "push" (slices, `git push`, "Push the filtered…" in `room.go`), nor the action field `Charge *RollCheck` in `attack.go`/`move.go` (the momentum roll — a different thing that keeps its name), nor `carry`/`Carry` meaning bar carry-over (`bars_view.go`, `actionCarry`, `ClockEditor`).
 - Historical docs are never edited: `docs/superpowers/plans/**`, `docs/superpowers/specs/**` (both repos).
 - Do not delete TODOs/comments outside scope; fix comments the rename makes wrong.
-- Out of scope: any rule or combat-code change; Biske's chart; charged blow / charge mechanics; match layout in the front (only the one constant in Task 5).
+- Out of scope: any other rule or combat-code change; Biske's chart; charged blow / charge mechanics; firearms dealing weapon-only damage (future, with damage types — leave a TODO); match layout in the front (Task 5 only removes the damage-skill picker).
 
 ## Review Focus
 
 1. **A sheet with XP in Push/Carry before the migration keeps the same XP in Force/Charge after it** (columns renamed, not dropped/recreated) — Task 3 smoke compares sums.
 2. **History of an old match still shows the damage skill** after the migration: `turns.resolution.damageSkill`, `actions.attack.DamageSkill`, `actions.attack.Damage.SkillName`, `actions.skills[].SkillName` become `Force` — Task 3 smoke counts zero `"Push"`/`"Carry"` under skill keys.
 3. **A loose `"Push"` that is not a skill name is untouched** (e.g. a weapon or note value) — Task 3 literal-document check.
-4. **The master's damage-skill toggle at the table** still shows two buttons with the current one pressed (`Force`), not a third disabled one — Task 5 test.
-5. **A player reading the combat chapter is never promised an automatic test, per-round HP loss or a recovery roll** that the game does not perform — Task 1 grep step.
+4. **An old client still sending `edit_action.damageSkill`** gets a clear refusal (or the field is ignored) — never a silent half-applied edit; and an old DB override row with field `damageSkill` does not break restore/undo — Task 3b tests.
+5. **Battle ends while a turn is open:** the Guarda aberta leaves now for everyone, and the exit is recorded with the turn close, not before (house rule) — Task 3c test.
+6. **A player reading the combat chapter is never promised an automatic test, per-round HP loss or a recovery roll** that the game does not perform — Task 1 grep step.
 
 ---
 
@@ -77,7 +78,7 @@
   | Asfixiando | o status existe e é visto | fôlego/afogamento inteiro (§5.3 Ar) |
   | Caído | desvantagem na esquiva por reflexo, no repelir e nos dois testes do escape (provisório) | só rola/desliza; levantar-se (movimento) |
   | No ar | sem esquiva por reflexo e sem escape; não muda a trajetória | aplicado pelo sistema no salto (movimento) |
-  | Guarda aberta | sem esquiva por reflexo e sem repelir; defesa só rolada; escape com desvantagem nos dois testes; o mestre tira (verified: the server never removes an effect by itself — contract §10) | sair sozinha no fim da batalha, provisório (§10 "Tempo fora do round"); manter a guarda por botão |
+  | Guarda aberta | sem esquiva por reflexo e sem repelir; defesa só rolada; escape com desvantagem nos dois testes; **sai sozinha no fim da batalha** (quando a mesa sai do turno disputado — Task 3c), e o mestre também pode tirar | manter a guarda por botão (`Stance`, §5.3) |
   | Compelido | não bloqueia; o sistema lembra o mestre da conduta; pode ser marcado irresistível | o teste de Resiliência/Força de Vontade pedido pelo mestre |
   | Controlado | o status diz quem controla | o outro declarar as ações |
   | Escondido | some do mapa, das barras, dos status e das ações de quem não o percebeu; o mestre esconde e revela | Furtividade contra a percepção (testes) |
@@ -116,7 +117,8 @@ git commit -m "docs(game): princípios do sistema e capítulo de efeitos de stat
   - **Editar e tirar**: through the status itself; taking off frees whoever was blocked (Atordoado…). **Desfazer no mesmo turno** (§16.3 item 21): removing in the same open turn it was applied is an undo, "como se nunca tivesse existido"; if it had removed actions from the queue or swapped a reaction, the master is asked "Devolver?" and what can't come back arrives with the reason. Desfazer a morte: §16.4 item 30 (choose the HP; default = the negative limit).
   - **O apelido**: free text shown with the status (up to 60 characters), narrative weight only; suggestions = spec §8 list verbatim, with **Preso — Agarrado, Amarrado, Soterrado, Pendurado**.
   - **Quem vê**: write in the spec's plain words, saying *who* sees (memory rule: never "escondido só para o mestre"). Public by default: Caído, No ar, Preso, Queimando, Inconsciente, Atordoado, Asfixiando, Guarda aberta, Morto. The others are seen, by default, by the master and the character's player (on an NPC: only the master). The master can make one public, or keep it to himself even on a player character (the needle). Players only see a public status of a character while they see that character on the map (no map: everyone); a private status still weighs on the player's tests. History: entry/change/exit are recorded; what a player couldn't see doesn't appear to them until revealed; the master reveals when he wants, even after the match ends, and widening who perceives an Escondido does not reveal the past. Escondido: see the chapter.
-  - Footer: keep the existing link; add links to `../../dev/api/match-status-effects.md`; TODOs: the master's screen for statuses does not exist in the front yet (the server already accepts it — front phases); choosing specific players (the server keeps a per-status player list; the text waits for per-player visibility, §9/§17); table setting "status de PJ públicos" (§9, no way to change it yet); revealing to one player only (§16.2 item 13).
+    The master can also choose **which players** see a given status (owner, 2026-11-27: this exists on the server and goes in the player text). What does NOT exist and stays out: a player perceiving an Escondido while others don't, and revealing history to one player only.
+  - Footer: keep the existing link; add links to `../../dev/api/match-status-effects.md`; TODOs: the master's screen for statuses does not exist in the front yet (the server already accepts it — front phases); perception of an Escondido per player and revealing to one player only (§16.2 items 13–14, §17); table setting "status de PJ públicos" (§9, no way to change it yet).
 
 - [ ] **Step 2: Fix the dash in `reacoes.md:191`** — replace the sentence `Durante o dash você está "no ar" e **não pode esquivar**: fica exposto. Por isso o escape fechado se move com Shift.` with the §5.3 "No ar" correction: no dash the character is neither exposed nor airborne; who already dashed and is attacked will hardly move again, but can evade, repel, parry or defend. Keep the Shift rationale only if it still reads true without "exposto" (it does not depend on it — drop "Por isso"). Search the file for other "exposto"/"no ar" mentions about the dash and fix them the same way.
 
@@ -183,6 +185,34 @@ git add -A internal migrations
 git commit -m "refactor(skills): Push vira Force e Carry vira Charge, com migração da experiência e do histórico"
 ```
 
+### Task 3b: Force always measures damage — remove the damage-skill swap (back)
+
+**Files:**
+- Modify: `internal/app/game/message.go` (`EditActionPayload.DamageSkill` gone; comments at :461, :707), `internal/app/game/action_mapper.go:380-389`, `internal/application/match/edit_action.go:99`, `internal/domain/match/entity/action/master_action.go:49-51` (`MasterAction.DamageSkill` gone), `internal/domain/match/entity/action/attack.go` (`DamageSkill` field, `DamageSkillNone`, `EffectiveDamageSkill` gone), `internal/domain/match/service/turn_resolver.go:498-520` (`actorDamageSkill` reads `enum.Force`, always; add `// TODO(armas): arma de fogo não soma Force — dano só da arma, quando existirem os tipos de dano.`), `internal/domain/match/matchsession/{match_session.go:553,597-603,714-720,error.go:66 (ErrNoDamageToMeasure), status_effects.go:545-553}`, `internal/app/game/room.go:3752` (`p.DamageSkill = enum.Force.String()` where an attack exists)
+- Modify docs: `docs/dev/api/match-combat-ws.md` (`edit_action.damageSkill` removed; `resolution.damageSkill`/`action_queued.damageSkill` read-only, always `"Force"` when there is an attack), `docs/dev/match/combat-engine.md` ("A perícia do dano"), `docs/dev/api/match-history.md` (`damageSkill` note: old turns may say `Grab`/`None`), `docs/game/combate/o-mestre.md` (drop "trocar a perícia que mede o dano" from "Ajustar uma ação que ainda está na fila"), `AGENTS.md` Known Issues line "O mestre edita ação na fila (condições e `damageSkill`…" → condições only.
+- Tests: delete/rewrite every test of the swap (`grep -rln 'DamageSkill\|damageSkill' internal --include=*_test.go`).
+
+**Interfaces:**
+- Consumes: `enum.Force` (Task 3).
+- Produces: wire `resolution.damageSkill` and `action_queued.damageSkill` keep their names and presence rule ("only with an attack"), value always `"Force"`; `edit_action` has no `damageSkill`. Task 5 relies on this.
+
+- [ ] **Step 1: Failing tests** — `TestEditActionRefusesDamageSkill` (WS e2e in `internal/app/game/edit_action_e2e_test.go`): an `edit_action` payload with `"damageSkill":"Grab"` → `error` `invalid_payload` with a PT message, and the resolution's `damageSkill` stays `"Force"`. Decide the decoding by reading how `edit_action` is decoded: if unknown fields are not rejected generically, decode into a struct that still has `DamageSkill *string` only to refuse it (comment why: old clients). `TestDamageAlwaysMeasuredByForce` (service): raw damage = weapon dice + flat + attacker's Force, with no way to change it. `TestRestoreIgnoresLegacyDamageSkillOverride`: an override row with field `damageSkill` (as old DB rows have) does not break reading/undo (`match_session.go:714` switch → ignore the key).
+- [ ] **Step 2:** Run them → FAIL. **Step 3:** Remove the swap as listed. **Step 4:** `go build ./... && go vet ./... && go vet -tags integration ./... && go test ./...` → PASS; `grep -rn 'DamageSkillNone\|EffectiveDamageSkill\|ErrNoDamageToMeasure' internal` → empty.
+- [ ] **Step 5: Commit** `refactor(combat): Force sempre mede o dano; sai a troca da perícia do dano`
+
+### Task 3c: Guarda aberta leaves at the end of battle
+
+"Fim da batalha" = the master switches the round from **disputed (`Race`) to free (`Free`)** (spec §10, confirmed by the owner 2026-11-27). Only that transition; `Free → Race` and a no-op `SetRoundMode` remove nothing.
+
+**Files:**
+- Modify: `internal/app/game/room.go` (the `MsgTypeChangeRoundMode` arm, :1130) and `internal/app/game/status_effects.go` (extract from `runStatusEffectChange` the part after `op` — stamp events, hold/flush writes, re-derive, announcements — so a system change can reuse it without a client)
+- Modify: `internal/domain/match/matchsession/status_effects.go` (new `func (s *MatchSession) EndBattleStatusEffects(at time.Time) (appmatch.StatusEffectChange-equivalent writes)` or the shape the existing remove path uses — match the real code: one remove write per `openGuard` effect in the session)
+- Docs: `docs/dev/api/match-status-effects.md` (§10 last bullet: "the server removes an effect by itself only in: Guarda aberta at the end of battle"; describe order and recipients), `docs/dev/match/status-effects.md`, `docs/dev/api/match-combat-ws.md` (`change_round_mode`), `AGENTS.md` Known Issues status-effects line.
+
+- [ ] **Step 1: Failing tests** (WS e2e, `internal/app/game/`): `TestBattleEndRemovesOpenGuard` — two characters with `openGuard` and one with `prone`; master sends `change_round_mode` `free` from `race` → each recipient that saw the effect gets `status_effects_updated` without `openGuard` (after the `round_mode_changed` broadcast), `prone` stays, the history has an exit event per removed effect with no `actionId`. `TestBattleEndWithOpenTurnRecordsOnClose` — same with a turn open: removal is live at once, the exit events are written only with the turn close (assert nothing written before `close_turn`, written after). `TestRaceDoesNotRemoveOpenGuard` — `free → race` and `race → race` remove nothing. The system removal is **never an undo**, even for a Guarda aberta applied in that same turn (no "Devolver?", no `restore_refused`).
+- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** `go test ./internal/app/game/... ./internal/domain/... && go test -tags=integration ./internal/gateway/pg/...` → PASS.
+- [ ] **Step 5: Commit** `feat(statuseffect): a Guarda aberta sai no fim da batalha`
+
 ### Task 4: Sheet docs, glossary and dev docs for the rename; Força de Vontade
 
 **Files:**
@@ -225,7 +255,7 @@ Work in the **front worktree**.
 **Files:**
 - Modify: `src/features/sheet/PhysicalSkillsGroup.tsx:28` → `skillsSubList={["charge", "force", "grab"]}` (alphabetical, like the other groups)
 - Modify: `src/features/sheet/factories/skill.factory.ts` (`carry`→`charge`, `push`→`force`), `src/features/sheet/utils/distribute.ts:159-161`, `src/features/sheet/engine/buildSheet.ts:85` → `["Strength", ["Force", "Grab", "Charge"]]`
-- Modify: `src/features/match/combat/RollEditLine.tsx:8` → `const DAMAGE_SKILLS = ["Force", "Grab"];` and the comment at :54; `src/features/match/combat/combatMessages.ts:259` comment. Nothing else in `features/match` beyond tests (another session is redoing the table layout).
+- Modify (damage-skill picker removal, Task 3b's front half): `src/features/match/combat/RollEditLine.tsx` (delete `DAMAGE_SKILLS`, the `None` constant and `DamageSkillPicker`), `QueuePanel.tsx:47-52` and `ResolutionDetails.tsx:98-105` (drop the picker block; keep the `damageSkill !== undefined` reads that mean "has an attack" — `ResolutionDetails.tsx:85`, `rollEdits.ts:104,140`), `rollEdits.ts:190` (delete `damageSkillPayload`), `combatMessages.ts` (drop `damageSkill` from `EditActionPayload` :375 and fix the comments :62-64, :259, :365-367 — `damageSkill` stays on `resolution`/`action_queued` as read-only, always `"Force"`). **Start only after the match-layout PR (#118) is merged**; rebase on it first. No other change in `features/match`.
 - Modify tests: every `"Push"`/`push:` skill fixture — `src/features/match/combat/__tests__/{ActionComposer,combatOrganisms,normalizeWire,rollEdits}.test.ts(x)`, `src/pages/__tests__/{GameMasterPage,GamePlayerPage}.test.tsx`, `src/services/__tests__/characterSheetsService.test.ts`
 - Sync: `src/features/sheet/engine/__fixtures__/sheet_parity.json`
 - Modify docs (current behaviour only): `docs/dev/match/combate-fase-8.md`, `docs/dev/match/combate-parede-alvo.md`, `docs/dev/match/combate-reacao-padrao.md` — "Push/Grab" → "Force/Grab"
@@ -233,7 +263,7 @@ Work in the **front worktree**.
 **Interfaces:**
 - Consumes: back strings `Force`, `Charge`; sheet keys `force`, `charge`; regenerated fixture from Task 3.
 
-- [ ] **Step 1: Update the damage-skill test first** — in `combatOrganisms.test.tsx` the test "Push/Grab manda damageSkill na hora…" becomes "Force/Grab sends damageSkill at once; unpressing the current one sends None" with `damageSkill: "Force"` in its fixture and `getByRole("button", { name: "Force" })` asserted `aria-pressed="true"`, clicking `Grab` sends `{ damageSkill: "Grab" }`, and no third disabled button exists (`queryAllByRole("button", { name: /^(Force|Grab)$/ })` length 2). Run `npx vitest run src/features/match/combat/__tests__/combatOrganisms.test.tsx` → FAIL (constant still Push).
+- [ ] **Step 1: Update the damage-skill tests first** — in `combatOrganisms.test.tsx` replace "Push/Grab manda damageSkill na hora…" with "the damage block has no skill picker": with `damageSkill: "Force"` and `onEditAction`, `queryByRole("button", { name: /^(Force|Grab)$/ })` is null and the Dano block (summary + `Editar Dano`) still renders; same assertion for the queue item in the `QueuePanel` test. Delete the `damageSkillPayload` cases in `rollEdits.test.ts`. Run `npx vitest run src/features/match/combat` → FAIL (picker still there).
 
 - [ ] **Step 2: Rename everything listed above; sync the fixture**
 ```bash
@@ -266,8 +296,9 @@ git commit -m "refactor(sheet): Push vira Force e Carry vira Charge (paridade co
 1. Os capítulos novos (princípios, efeitos de status) não entram no painel "?" da ficha: ele é da criação de personagem e o spec §12 diz que as regras de combate aparecem em outro lugar do site.
 2. Os exemplos das notas que dependem de mecânica que ainda não existe (Recuperação com bônus, Tenacidade contra o dano, salto mortal) foram para o rodapé "Para Desenvolvedores"; os outros foram escritos com o mestre aplicando o status.
 3. A tela do mestre para aplicar status ainda não existe no front; a doc do mestre descreve a regra e o rodapé registra a tela como TODO.
-4. O servidor já guarda uma lista de jogadores por status, mas escolher jogadores específicos ficou fora do texto do jogador (visibilidade por jogador) e entrou como TODO.
-5. A migração renomeia as colunas de experiência e reescreve o nome da perícia em todo o histórico gravado, só nos campos que guardam nome de perícia — nunca em texto solto.
-6. Na mesa do front só a constante das perícias de dano mudou (Force/Grab), para o seletor não quebrar; nada de layout.
+4. A doc do mestre diz que ele escolhe quais jogadores veem um status (já existe no servidor). Fica fora só o que não existe: um jogador perceber um Escondido e os outros não, e revelar o histórico a um jogador só.
+5. A migração (necessária porque o esquema muda e o deploy roda as migrações) renomeia as colunas de experiência e reescreve o nome da perícia em todo o histórico gravado, só nos campos que guardam nome de perícia — nunca em texto solto. O dono preferia SQL à mão; ficou na migração porque o código novo exige as colunas novas em todo banco.
+6. Force passa a ser sempre a perícia do dano (dono, 2026-11-27): sai a troca pelo mestre, inclusive o "nenhuma perícia, só a arma", no back e no front. O campo `damageSkill` continua no cálculo e no histórico só para leitura (sempre Force; turnos antigos podem dizer Grab/None). Arma de fogo sem Force fica como TODO, com os tipos de dano.
+9. A Guarda aberta sai sozinha quando o mestre passa a mesa do turno disputado para o turno livre (dono confirmou a definição de "fim da batalha", spec §10). Com turno aberto, sai na hora e é gravada no fechamento; nunca é tratada como desfazer.
 7. No contrato, a sugestão de apelido do Preso "Enredado" virou "Amarrado" (spec §8).
 8. A coluna "Na ficha" e a ficha continuam mostrando o nome em inglês (Force, Charge), como as outras perícias.
