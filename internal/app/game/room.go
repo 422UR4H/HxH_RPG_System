@@ -1150,6 +1150,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var modeScene *sceneentity.Scene
 		var modeRound *roundentity.Round
 		var modePause *clock.Pause
+		var battleEnd settledStatus
+		var battleEnded bool
 		if session != nil {
 			modeScene, modeRound = session.GetActiveScene(), session.GetActiveRound()
 			oldMode = modeRound.GetMode()
@@ -1161,6 +1163,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			// Copies, taken after the switch: the record below writes them after the unlock.
 			modeScene, modeRound = snapshotSceneAndRound(modeScene, modeRound)
 			r.clearClockMergeLocked()
+			// Fim da batalha: do turno disputado para o livre, a Guarda aberta sai (spec §10).
+			// Na mesma seção crítica da troca; anunciado depois do round_mode_changed.
+			if err == nil && oldMode == enum.Race && newMode == enum.Free {
+				battleEnd, battleEnded = r.endBattleStatusEffectsLocked(session)
+			}
 		}
 		r.mu.Unlock()
 		if session == nil {
@@ -1186,6 +1193,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		data, _ := json.Marshal(out)
 		r.broadcastInOrder(data, clockData)
 		r.broadcastBars(session)
+		if battleEnded {
+			// Grava (fora de turno) e manda a cada um a lista nova, sem a Guarda aberta.
+			r.announceStatusChange(battleEnd)
+		}
 
 	case MsgTypePullAction:
 		if !r.IsMaster(client.userUUID) {

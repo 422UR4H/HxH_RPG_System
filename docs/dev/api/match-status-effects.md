@@ -857,8 +857,33 @@ Para o front não procurar. **Nada disto está no fio**:
 - **Esconder o NPC no REST** de participantes (`GET` de participantes da partida): continua
   listando o NPC; o front precisa lidar com isso até a fase dele.
 - **Configuração de mesa** `PlayerStatusEffectsPublic`: sem comando para ligar.
-- O servidor não remove o efeito sozinho em nenhum caso (nem por troca de cena, nem por fim de
-  round, nem por relógio).
+- O servidor remove um efeito sozinho **só em um caso: a Guarda aberta no fim da batalha** (ver
+  [Fim da batalha](#fim-da-batalha-guarda-aberta-sai) abaixo). Nenhum outro efeito sai sozinho (nem
+  por troca de cena, nem por fim de round, nem por relógio).
+
+### Fim da batalha: Guarda aberta sai
+
+"Fim da batalha" é o mestre trocar o round de **disputado para livre**
+([`change_round_mode`](match-combat-ws.md#change_round_mode) com `mode: "Free"` vindo de `Race`).
+Nesse instante o servidor tira **todo `openGuard`** da mesa, como o sistema. Só essa transição:
+`Free → Race` e trocar para o regime que já está (`Race → Race`) não removem nada.
+
+- **O que o front recebe.** Depois do [`round_mode_changed`](match-combat-ws.md#round_mode_changed)
+  (e do `bars_updated` da troca), um `status_effects_updated` por personagem que perdeu a Guarda
+  aberta, **por destinatário** como qualquer outro ([§8](#8-status_effects_updated)): o mestre sempre,
+  os jogadores só se enxergam o personagem e a Guarda aberta estava na lista deles. Os outros efeitos
+  do personagem continuam na lista. As mensagens viajam em pistas diferentes (o `round_mode_changed`
+  pela de broadcast, a lista pela direta): **não há garantia de ordem** entre elas — o cliente não
+  pode depender de uma vir antes da outra.
+- **Não é um desfazer**, nem para uma Guarda aberta aplicada no mesmo turno aberto: nada volta à
+  fila, nenhum `action_restored`/`reaction_restored`/`restore_refused`. O que a Guarda aberta tirou
+  continua tirado; o que o conjunto novo libera segue o caminho de qualquer mudança (a reação padrão
+  sentada e a fila são revistas; o mestre pode receber `action_queued` e `resolution_updated`).
+- **Histórico.** Cada Guarda aberta removida ganha um evento de saída (`removed`), **sem `actionId`**;
+  dentro de um turno aberto, com o `turnId` dele.
+- **Gravação** ([§12](#12-quando-é-gravado)): fora de turno, gravada antes do `status_effects_updated`;
+  com turno aberto, a saída vale ao vivo na hora e é gravada **com o fechamento do turno** (uma Guarda
+  aberta aplicada nesse turno grava a aplicação e a saída juntas, nessa ordem).
 
 ## 11. Barras e `npc_added` mudaram
 
