@@ -68,7 +68,7 @@ registra o número é o mestre.
 
 **Vida**
 
-- **Sangrando**, **Queimando**, **Congelando**, **Envenenado** — cada um tem um número: quanto de Vida o personagem perde por round (começa em 1). **Veneno é fonte, não status:** um veneno pode pôr Envenenado, Paralisado, Debilitado, Visão anulada ou Inconsciente, conforme o que a história diz; "Envenenado" é só o dano por round.
+- **Sangrando**, **Queimando**, **Congelando**, **Envenenado** — cada um tem um número por round (começa em 1), que a mesa vê e o mestre edita. O sistema ainda não tira a Vida por conta própria: quem desconta é o mestre, quando a cena pede. **Veneno é fonte, não status:** um veneno pode pôr Envenenado, Paralisado, Debilitado, Visão anulada ou Inconsciente, conforme o que a história diz; "Envenenado" é só o número do veneno.
 
 **Ar**
 
@@ -147,7 +147,7 @@ Um status dentro de outro contém tudo o que o de fora faz. O que não se encaix
 
 Como ler o desenho:
 
-- **Atordoado = Paralisado (o corpo inteiro) + Atônito + todos os sentidos anulados.** O Atônito é a metade "mente travada"; o Paralisado, a metade "corpo travado". Diferem na origem e em como se recuperam.
+- **Atordoado = Paralisado (o corpo inteiro) + Atônito + todos os sentidos anulados.** O Atônito é a metade "mente travada"; o Paralisado, a metade "corpo travado". Diferem na origem.
 - **Preso** é a parte "não se desloca" que o Paralisado de movimento também tem; mas o Preso mantém todas as reações.
 - **Lento** é a parte de movimento do Lesionado machucado.
 - **Controlado contém Compelido:** quem controla tudo pode impor qualquer conduta.
@@ -207,7 +207,7 @@ Quando uma cena pede uma resistência, esta é a referência de que o mestre par
 | Aparar o golpe (reduzir dano; a queda) | Defesa |
 | Aguentar o que passou: atordoamento, choque, fogo, frio, veneno, clarão | Tenacidade |
 | Sangue: não começar a sangrar, estancar | Cura |
-| Ficar consciente (Vida abaixo de 0, afogamento) | Vitalidade (o corpo; a Força de Vontade fica com a exaustão e o medo) |
+| Ficar consciente (Vida abaixo de 0, afogamento) | Vitalidade (o corpo; a Força de Vontade fica com a exaustão e o medo). O mestre pode trocar a perícia do teste |
 | Fôlego | Respiração |
 | A mente: pavor, nojo, choque | Resiliência (atributo mental, sem perícia) |
 | Medo e conduta imposta | Resiliência ou Força de Vontade (o mestre lê a cena) |
@@ -244,7 +244,7 @@ Em todos, quem aplica o status é o mestre.
 - **O personagem se joga no chão:** Caído, sem teste.
 - **Muito dano num golpe:** o mestre põe o Caído e o Sangrando.
 - **Inconsciente carregado por um aliado, ou posto sentado:** sai o Caído; fica o Inconsciente.
-- **Choque elétrico:** o personagem aguenta com Tenacidade; quem não aguenta fica Paralisado (em choque).
+- **Choque elétrico:** o mestre decide se o personagem aguenta (ele pode pedir um teste de Tenacidade) e, se não aguenta, põe o Paralisado (em choque).
 - **Kastro contra Hisoka:** a insanidade do Hisoka abala o Kastro, que fica Atônito: não consegue usar o clone para se proteger e morre por isso.
 - **A agulha do Illumi no Killua:** Compelido irresistível, com a conduta "fugir quando em perigo", visível só para o mestre. Não é controle direto.
 - **O Gon e a plaqueta do Hisoka:** com vantagem dupla, o teste tem a chance de crítico do D20 sem o erro crítico dele. É assim que a ousadia do Gon cabe numa rolagem comum.
