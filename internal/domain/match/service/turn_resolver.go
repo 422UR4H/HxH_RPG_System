@@ -144,8 +144,8 @@ type TurnResolution struct {
 	Blows            []*battle.Blow
 	WallResults      []WallResult
 	IsSettled        bool
-	// DamageSkill names the skill that measured the attack's damage — "Force" unless the master
-	// swapped it. Empty when the action has no attack. Public, like rawDamage: once settled,
+	// DamageSkill names the skill that measured the attack's damage — always "Force" now (an old
+	// turn's record may say otherwise, read as stored). Empty when the action has no attack. Public, like rawDamage: once settled,
 	// whoever reads the damage reads what measured it.
 	DamageSkill string
 	// Conditions is every master condition in force on the turn — filled only while the turn
@@ -331,7 +331,7 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	res.IsSettled = in.Turn.GetFinishedAt() != nil
 	a := in.Turn.GetAction()
 	if a.Attack != nil {
-		res.DamageSkill = a.Attack.EffectiveDamageSkill().String()
+		res.DamageSkill = enum.Force.String()
 	}
 
 	if in.Targets != nil {
@@ -495,8 +495,7 @@ func (tr TurnResolver) actorSheetMissing(in ResolveInput, a action.Action, res *
 	return true
 }
 
-// actorDamageSkill reads the attacker's skill that measures damage — Force, unless the master
-// swapped it (Attack.DamageSkill, edit_action damageSkill).
+// actorDamageSkill reads the attacker's skill that measures damage — always Force.
 //
 // It nil-guards on purpose: the wall branch is NOT behind actorSheetMissing, so an action
 // whose actor sheet never reached the resolver arrives here with nothing. Zero is the honest
@@ -507,14 +506,8 @@ func (tr TurnResolver) actorDamageSkill(in ResolveInput, a action.Action) int {
 	if !ok || cs == nil {
 		return 0
 	}
-	skill := enum.Force
-	if a.Attack != nil {
-		skill = a.Attack.EffectiveDamageSkill()
-	}
-	if skill == action.DamageSkillNone {
-		return 0 // the master said no skill measures this blow
-	}
-	return skillValueOf(cs, skill.String())
+	// TODO(armas): arma de fogo não soma Força — dano só da arma, quando existirem os tipos de dano.
+	return skillValueOf(cs, enum.Force.String())
 }
 
 // rawDamage is the attack's raw damage as the chain and a wall read it: RawDamage (the

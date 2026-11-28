@@ -78,36 +78,15 @@ func TestActorForce_MissingSheetIsZero(t *testing.T) {
 	})
 }
 
-// TestActorDamageSkill_ReadsTheMastersChoice: with the master's Grab on the attack, the damage
-// is measured by the sheet's Grab, not its Force.
-func TestActorDamageSkill_ReadsTheMastersChoice(t *testing.T) {
+// TestDamageAlwaysMeasuredByForce: the raw damage of an attack is the weapon's dice + flat +
+// the attacker's Force, and nothing on the attack can change which skill is added.
+func TestDamageAlwaysMeasuredByForce(t *testing.T) {
 	actorID := uuid.New()
-	cs, _ := forcedSheet(t)
-	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(900), enum.Grab); err != nil {
-		t.Fatalf("IncreaseExpForSkill(Grab): %v", err)
-	}
-	grab, err := cs.GetValueForTestOfSkill(enum.Grab)
-	if err != nil {
-		t.Fatalf("GetValueForTestOfSkill(Grab): %v", err)
-	}
+	cs, force := forcedSheet(t)
 	a := action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{},
-		nil, nil, &action.Attack{DamageSkill: enum.Grab}, nil, nil, nil, nil)
+		nil, nil, &action.Attack{}, nil, nil, nil, nil)
 	in := ResolveInput{Sheets: map[uuid.UUID]*csSheet.CharacterSheet{actorID: cs}}
-
-	if got := (TurnResolver{}).actorDamageSkill(in, *a); got != grab {
-		t.Fatalf("actorDamageSkill() = %d, want the sheet's Grab %d", got, grab)
-	}
-}
-
-// The master's "no skill measures this blow" (edit_action damageSkill "None"): the damage reads
-// zero from the sheet, however strong the Force.
-func TestActorDamageSkill_NoneAddsNothing(t *testing.T) {
-	actorID := uuid.New()
-	cs, _ := forcedSheet(t)
-	a := action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{},
-		nil, nil, &action.Attack{DamageSkill: action.DamageSkillNone}, nil, nil, nil, nil)
-	in := ResolveInput{Sheets: map[uuid.UUID]*csSheet.CharacterSheet{actorID: cs}}
-	if got := (TurnResolver{}).actorDamageSkill(in, *a); got != 0 {
-		t.Fatalf("actorDamageSkill() = %d, want 0 with no damage skill", got)
+	if got := (TurnResolver{}).actorDamageSkill(in, *a); got != force {
+		t.Fatalf("actorDamageSkill() = %d, want the sheet's Force %d", got, force)
 	}
 }

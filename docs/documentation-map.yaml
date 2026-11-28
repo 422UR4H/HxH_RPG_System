@@ -1491,7 +1491,7 @@ mappings:
       dano, armadura e Nen. A margem do acerto NÃO entra no dano, por decisão de
       produto. Hoje toda arma do catálogo tem defense 0, então a subtração é inerte.
       backend-prep-front-combat: RawDamage ganhou o parâmetro push — soma o Push do
-      atacante (actorDamageSkill em turn_resolver.go: lê Attack.EffectiveDamageSkill(), Push por padrão), lido da ficha, nos dois call sites
+      atacante (actorDamageSkill em turn_resolver.go: sempre a Força), lido da ficha, nos dois call sites
       (parede e personagem). Consequência de contrato: attack.damage.skillName no WS
       passou a ser aceito/validado mas descartado — documentado em match-combat-ws.md
       junto de speed.

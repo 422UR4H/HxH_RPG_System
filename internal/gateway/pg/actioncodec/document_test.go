@@ -134,3 +134,17 @@ func TestUnmarshalRefusesABrokenPiece(t *testing.T) {
 		t.Fatal("Unmarshal accepted an attack that is not an object")
 	}
 }
+
+// TestUnmarshalIgnoresLegacyDamageSkillKey: attacks saved while the master could swap the
+// damage skill carry a "DamageSkill" key. Reading one must not fail.
+func TestUnmarshalIgnoresLegacyDamageSkillKey(t *testing.T) {
+	raw := []byte(`{"attack":{"Hit":{},"Damage":{},"DamageSkill":"Grab"}}`)
+	id, actor := uuid.New(), uuid.New()
+	got, err := actioncodec.Unmarshal(id, actor, raw)
+	if err != nil {
+		t.Fatalf("Unmarshal with a legacy DamageSkill key: %v", err)
+	}
+	if got.Attack == nil {
+		t.Fatal("the attack was lost")
+	}
+}

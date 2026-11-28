@@ -131,13 +131,6 @@ func TestQueuedEdit_CancellingTakesTheEditsWithIt(t *testing.T) {
 	if err := f.edit(t, conditionOn(f.first.GetID(), action.FieldSpeed, action.RollCondition{Modifier: 7})); err != nil {
 		t.Fatalf("ApplyMasterAction(speed): %v", err)
 	}
-	damage := action.NewMasterAction()
-	damage.ActionID = f.first.GetID()
-	grab := enum.Grab
-	damage.DamageSkill = &grab
-	if err := f.edit(t, damage); err != nil {
-		t.Fatalf("ApplyMasterAction(damageSkill): %v", err)
-	}
 	speed := f.first.Speed.Result
 
 	chain, err := f.session.CancelAction(f.playerA, f.first.GetID())
@@ -149,9 +142,6 @@ func TestQueuedEdit_CancellingTakesTheEditsWithIt(t *testing.T) {
 	if cancelled.Speed.Context.Condition != nil || cancelled.Speed.Result != speed-7 {
 		t.Fatalf("speed = %d with condition %+v, want the declared %d and none", cancelled.Speed.Result,
 			cancelled.Speed.Context.Condition, speed-7)
-	}
-	if got := cancelled.Attack.EffectiveDamageSkill(); got != enum.Force {
-		t.Fatalf("damage skill = %v, want Force back — the edit goes with the action", got)
 	}
 }
 

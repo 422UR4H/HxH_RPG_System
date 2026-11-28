@@ -542,15 +542,10 @@ func (s *MatchSession) reapplyEdits(a *action.Action, snap editSnapshot) {
 
 // currentValue é o valor de agora de um campo que captureOverride captura, na forma que
 // restoreOriginal escreve de volta (as chaves de lá: "<campo>.condition",
-// "skill:<nome>.condition", "damageSkill", "targetIds", "skills"). nil = sem valor (uma
+// "skill:<nome>.condition", "targetIds", "skills"). nil = sem valor (uma
 // condição ausente).
 func currentValue(a *action.Action, field string) any {
 	switch field {
-	case "damageSkill":
-		if a.Attack == nil {
-			return nil
-		}
-		return a.Attack.DamageSkill
 	case "targetIds":
 		return append([]uuid.UUID(nil), a.TargetID...)
 	case "skills":

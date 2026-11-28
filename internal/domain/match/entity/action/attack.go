@@ -23,17 +23,9 @@ type Attack struct {
 	Weapon *enum.WeaponName
 	Hit    RollCheck
 	Damage RollCheck
-	// DamageSkill is the skill that measures this attack's damage. The player does not choose
-	// it — the weapon deals the damage, and Force measures it (front-combat-phases.md §4.6) —
-	// but the master may swap it (edit_action damageSkill: Grab, or another). Zero means Force:
-	// every attack, and every row persisted before the field existed.
-	//
-	// Deliberately NOT Damage.SkillName. That is the field the player sends and the server
-	// discards, and the action wire carries it to everyone: storing the master's choice there
-	// would let a player choose, and would show a player who reconnects mid-turn the master's
-	// edit before the turn closes. No wire maps this field.
-	DamageSkill enum.SkillName
-	Charge      *RollCheck
+	// Force always measures this attack's damage (front-combat-phases.md §4.6): there is no
+	// field for it, and the master cannot swap it.
+	Charge *RollCheck
 	// Spread is how this attack reaches several targets. See AttackSpread: reserved until
 	// abilities exist, and today's only reachable value is the zero value, SpreadSequential.
 	Spread AttackSpread
@@ -47,17 +39,4 @@ type Attack struct {
 	// --> decidi que esse cálculo será feito em outro local
 	// 		- algum objeto de battle, action.engine, ou até a própria move resolverá isso
 	// 		- ActorSpeed e TargetSpeed são da action move e serão resolvidas lá
-}
-
-// DamageSkillNone is the master's "no skill measures this damage": the weapon's dice and flat
-// bonus alone (a firearm, say). Not a skill of the enum — a choice of the master's, on the wire
-// as "None".
-const DamageSkillNone enum.SkillName = "None"
-
-// EffectiveDamageSkill is DamageSkill with its zero value read as Force.
-func (a Attack) EffectiveDamageSkill() enum.SkillName {
-	if a.DamageSkill == "" {
-		return enum.Force
-	}
-	return a.DamageSkill
 }

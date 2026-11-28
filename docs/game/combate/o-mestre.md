@@ -65,7 +65,7 @@ teste, as duas se anulam e o valor médio volta a valer.
 ## Ajustar uma ação que ainda está na fila
 
 O mestre pode ajustar uma ação **antes de ela agir**, enquanto ainda espera na fila: dar ou tirar
-vantagem, somar um ajuste, trocar a perícia que mede o dano. Se ele mexe na **velocidade**, a
+vantagem ou somar um ajuste. Se ele mexe na **velocidade**, a
 ação muda de lugar na fila. O jogador que declarou a ação não vê o ajuste. Se a ação for
 cancelada, ou trocada por uma reação, o ajuste vai embora com ela.
 

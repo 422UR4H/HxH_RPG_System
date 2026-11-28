@@ -36,8 +36,7 @@ func TestE2E_Regency(t *testing.T) {
 
 	before := masterMsgs.count(game.MsgTypeResolutionUpdate)
 	sendWS(t, master, "edit_action", map[string]any{
-		"conditions":  []map[string]any{{"field": "hit", "bias": -1, "modifier": -2, "description": "escuridao"}},
-		"damageSkill": "Grab",
+		"conditions": []map[string]any{{"field": "hit", "bias": -1, "modifier": -2, "description": "escuridao"}},
 	})
 	if !masterMsgs.await(game.MsgTypeActionEdited, 2*time.Second) {
 		t.Fatal("the master never received action_edited")
@@ -48,8 +47,8 @@ func TestE2E_Regency(t *testing.T) {
 
 	assertRegency := func(t *testing.T, p game.ResolutionUpdatedPayload, where string) {
 		t.Helper()
-		if p.DamageSkill != "Grab" {
-			t.Errorf("%s: damageSkill = %q, want Grab", where, p.DamageSkill)
+		if p.DamageSkill != "Force" {
+			t.Errorf("%s: damageSkill = %q, want Force", where, p.DamageSkill)
 		}
 		if len(p.Conditions) != 1 {
 			t.Fatalf("%s: conditions = %+v, want the one hit condition", where, p.Conditions)
@@ -87,7 +86,7 @@ func TestE2E_Regency(t *testing.T) {
 		raw := string(findMessage(t, playerMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload)
 		// "defaultDefense" cannot fail today (the field has no JSON tag); it guards against a
 		// future tag or wire mapping exposing the master's passive-defense edit.
-		for _, leak := range []string{"Grab", "escuridao", "damageSkill", "conditions", "defaultDefense"} {
+		for _, leak := range []string{"escuridao", "damageSkill", "conditions", "defaultDefense"} {
 			if strings.Contains(raw, leak) {
 				t.Errorf("match_full_state for a player carries %q: %s", leak, raw)
 			}
@@ -124,8 +123,8 @@ func TestE2E_Regency(t *testing.T) {
 		if !settled.IsSettled {
 			t.Fatal("the resolution the player received is not the settled one")
 		}
-		if settled.DamageSkill != "Grab" {
-			t.Errorf("settled damageSkill = %q, want Grab", settled.DamageSkill)
+		if settled.DamageSkill != "Force" {
+			t.Errorf("settled damageSkill = %q, want Force", settled.DamageSkill)
 		}
 		if settled.Conditions != nil {
 			t.Errorf("settled conditions reached a player: %+v", settled.Conditions)

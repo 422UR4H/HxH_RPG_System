@@ -180,7 +180,7 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   velocidades, `TurnResolution.DiceShort` + `ResolveTurn` nos testes da resolução; o valor base
   vai em `match_full_state.passiveValue`). **Repelir quem o ataque da fila mirava não é troca**
   (`keepsQueuedIntent`: `sameBlowAsQueued`, ao lado do `sameMoveAsQueued` das fugas). **O
-  mestre edita ação na fila** (condições e `damageSkill`; `targetIds`/`skills` recusados — ver o
+  mestre edita ação na fila** (só condições; `targetIds`/`skills` recusados — ver o
   comentário em `ApplyMasterAction`); `speed` editada reordena a fila, e cancelar/consumir
   descarta as edições (`discardEdits`). Spec
   `docs/superpowers/specs/2026-10-12-default-reaction-and-queue-edits-design.md`.

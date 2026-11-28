@@ -1526,6 +1526,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para editar a ação."))
 			return
 		}
+		if payload.DamageSkill != nil {
+			// Cliente antigo: a Força sempre mede o dano. Recusa inteira, sem aplicar o resto.
+			client.SendMessage(NewErrorMessage("invalid_payload", "A perícia que mede o dano não pode mais ser trocada: é sempre a Força."))
+			return
+		}
 		ma, err := buildEditAction(payload)
 		if err != nil {
 			client.SendMessage(NewErrorMessage("invalid_action", gameErrorText(err)))
@@ -3749,7 +3754,7 @@ func newActionQueuedPayload(a *action.Action) ActionQueuedPayload {
 		Conditions: conditionPayloadsOf(domainservice.ActionConditions(*a)),
 	}
 	if a.Attack != nil {
-		p.DamageSkill = a.Attack.EffectiveDamageSkill().String()
+		p.DamageSkill = enum.Force.String()
 	}
 	return p
 }

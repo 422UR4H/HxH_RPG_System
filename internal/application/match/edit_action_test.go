@@ -9,7 +9,6 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -1125,108 +1124,6 @@ func TestEditActionDamageCondition(t *testing.T) {
 		}
 		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
 			t.Fatalf("captured %d values for a refused edit, want 0", got)
-		}
-	})
-}
-
-func TestEditActionDamageSkill(t *testing.T) {
-	editSkill := func(t *testing.T, f *editFixture, id uuid.UUID, name enum.SkillName, extra ...action.ConditionEdit) error {
-		t.Helper()
-		ma := action.NewMasterAction()
-		ma.ActionID = id
-		ma.DamageSkill = &name
-		ma.Conditions = extra
-		_, err := match.NewEditActionUC().Execute(
-			context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
-		return err
-	}
-	// grabbing raises the attacker's Grab and lifts the hit past the passive dodge, so the
-	// blow lands and RawDamage is read. Raising Grab can also move Force (they share an
-	// attribute), so the test reads both off the sheet instead of assuming either.
-	grabbing := func(t *testing.T) (f *editFixture, force, grab int) {
-		t.Helper()
-		f = newOpenAttackFixture(t)
-		cs, err := f.session.GetCharSheet(f.attackerID)
-		if err != nil {
-			t.Fatalf("GetCharSheet: %v", err)
-		}
-		if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(900), enum.Grab); err != nil {
-			t.Fatalf("IncreaseExpForSkill(Grab): %v", err)
-		}
-		force, _ = cs.GetValueForTestOfSkill(enum.Force)
-		grab, _ = cs.GetValueForTestOfSkill(enum.Grab)
-		if grab == force {
-			t.Fatal("fixture: Grab equals Force, the swap would prove nothing")
-		}
-		f.editHitModifier(t, 20)
-		return f, force, grab
-	}
-
-	t.Run("an untouched attack is measured by Force", func(t *testing.T) {
-		f := newOpenAttackFixture(t)
-		if got := f.currentResolution(t).DamageSkill; got != enum.Force.String() {
-			t.Fatalf("DamageSkill = %q, want Force", got)
-		}
-	})
-
-	t.Run("Grab measures the damage, and the resolution says so", func(t *testing.T) {
-		f, force, grab := grabbing(t)
-		before := f.currentResolution(t).CharacterResults[0].RawDamage
-		if err := editSkill(t, f, f.actionID, enum.Grab); err != nil {
-			t.Fatalf("Execute: %v", err)
-		}
-		res := f.currentResolution(t)
-		if res.DamageSkill != enum.Grab.String() {
-			t.Fatalf("DamageSkill = %q, want Grab", res.DamageSkill)
-		}
-		if got, want := res.CharacterResults[0].RawDamage, before-force+grab; got != want {
-			t.Fatalf("RawDamage = %d, want %d (Force %d swapped for Grab %d)", got, want, force, grab)
-		}
-	})
-
-	t.Run("the capture keeps the original Force, from the system", func(t *testing.T) {
-		f, _, _ := grabbing(t)
-		before := len(f.session.PeekOverridesFor(f.openTurn())) // the hit edit's row
-		if err := editSkill(t, f, f.actionID, enum.Grab); err != nil {
-			t.Fatalf("Execute: %v", err)
-		}
-		var row *matchDomain.OverriddenValue
-		for _, o := range f.session.PeekOverridesFor(f.openTurn()) {
-			if o.Field == "damageSkill" {
-				o := o
-				row = &o
-			}
-		}
-		if row == nil {
-			t.Fatal("no damageSkill row was captured")
-		}
-		if row.Origin != matchDomain.OriginSystem {
-			t.Fatalf("Origin = %q, want system — the engine chose Force, not the player", row.Origin)
-		}
-		if row.Original != enum.Force {
-			t.Fatalf("Original = %#v, want Force", row.Original)
-		}
-
-		if err := editSkill(t, f, f.actionID, enum.Force); err != nil {
-			t.Fatalf("Execute (back to Force): %v", err)
-		}
-		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != before {
-			t.Fatalf("captured %d values after editing back to Force, want %d", got, before)
-		}
-	})
-
-	t.Run("an action with no attack is refused, and nothing in the payload lands", func(t *testing.T) {
-		f := newOpenMoveFixture(t)
-		speed := action.ConditionEdit{Field: action.FieldSpeed, Condition: action.RollCondition{Modifier: 2}}
-		err := editSkill(t, f, f.actionID, enum.Grab, speed)
-		if !errors.Is(err, matchsession.ErrNoDamageToMeasure) {
-			t.Fatalf("err = %v, want ErrNoDamageToMeasure", err)
-		}
-		if f.openTurn().ActionRef().Speed.Context.Condition != nil {
-			t.Fatal("a refused edit left the speed condition behind")
-		}
-		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
-			t.Fatalf("a refused edit captured %d overrides", got)
 		}
 	})
 }

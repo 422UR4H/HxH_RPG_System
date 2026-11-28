@@ -135,7 +135,7 @@ renderiza os cards de ação dentro do escopo de cada cena. Cada round carrega t
               ],
               "resolution": {
                 "isSettled": true,
-                "damageSkill": "Push",
+                "damageSkill": "Force",
                 "action": { "skillName": "Legerity", "skillValue": 14, "diceRolled": [6, 8], "total": 20, "isCritical": false, "isCriticalFailure": false },
                 "targets": [
                   {
@@ -299,10 +299,10 @@ Notas sobre `resolution`:
   expõem. `isCritical`/`isCriticalFailure`/`total` do acerto e o `projectedDamage` (dano final, já
   dobrado num crítico) seguem valendo. Quem precisar de "morreu" no histórico lê o evento de status
   `dead` ([`statusEffects`](#efeitos-de-status-no-histórico--kind-statuseffect-e-turnsstatuseffects)).
-- `damageSkill` é a perícia que mediu o dano: `Push`, ou a que o mestre escolheu
-  ([`edit_action`](match-combat-ws.md#edit_action) `damageSkill`). Pública, como `rawDamage`.
-  **Ausente** em turno sem ataque e em turnos gravados antes da Fase 8, que foram todos `Push`.
-  `"None"` = o mestre tirou a perícia do dano (só a arma).
+- `damageSkill` é a perícia que mediu o dano: sempre `Force` hoje (a Força mede o dano; o mestre
+  não troca mais). Pública, como `rawDamage`. **Ausente** em turno sem ataque e em turnos gravados
+  antes da Fase 8. Turnos antigos, de quando o mestre podia trocar a perícia, podem dizer `Grab`
+  ou `"None"` (só a arma): o histórico devolve o que foi gravado.
 - `walls[]` — `{ wallId, kind, effectiveDamage, failure? }`: o que o turno fez a cada parede que
   mirou (`kind` `attack`: o dano depois da resistência; `interact`: `failure` quando nada mudou —
   `locked`, `noRoll`, `notApplicable`). Sem `hp`: a vida da parede mora nas tabelas do mapa, não no

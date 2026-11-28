@@ -289,17 +289,10 @@ func TestE2E_WallBlowLandsAtTheClose(t *testing.T) {
 		t.Fatal("the wall changed when the turn opened — the blow lands at the close")
 	}
 
-	sendWS(t, master, string(game.MsgTypeEditAction), map[string]any{"damageSkill": "None"})
-	if !awaitCount(mc, game.MsgTypeResolutionUpdate, 2, 2*time.Second) {
-		t.Fatal("the edit never republished the resolution")
+	if res.DamageSkill != "Force" {
+		t.Fatalf("damageSkill = %q, want Force", res.DamageSkill)
 	}
-	edited := lastResolutionUpdated(t, mc)
-	if edited.DamageSkill != "None" {
-		t.Fatalf("damageSkill = %q, want None", edited.DamageSkill)
-	}
-	if edited.Walls[0].EffectiveDamage > res.Walls[0].EffectiveDamage {
-		t.Errorf("no damage skill raised the blow: %d > %d", edited.Walls[0].EffectiveDamage, res.Walls[0].EffectiveDamage)
-	}
+	edited := res
 
 	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
 	got := awaitWallHp(t, mc, reachDoorID, 2*time.Second)
