@@ -316,6 +316,10 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/match-status-effects.md
         confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/efeitos-de-status.md
+        confidence: directly_affected
+        reason: Catálogo dos status, o que pesa nos testes, crítico e morte, como o jogador lê
     notes: Tipos, parâmetros por tipo (tabela do contrato §4), peças, Summary, quem vê (Listed)
   - code_path: internal/app/game/status_effects.go
     dev_docs:
@@ -357,6 +361,10 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/match/combat-engine.md
         confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/efeitos-de-status.md
+        confidence: directly_affected
+        reason: Catálogo dos status, o que pesa nos testes, crítico e morte, como o jogador lê
     notes: RollEffectOf — o que os efeitos fazem a um teste (viés, penalidade, falha automática, só rolada); tabela domínio → teste; tabela "O que pesa nas rolagens" do contrato
   - code_path: internal/domain/match/matchsession/death.go
     dev_docs:
@@ -366,6 +374,10 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/character-sheet.md
         confidence: possibly_affected
+    game_docs:
+      - path: docs/game/combate/efeitos-de-status.md
+        confidence: directly_affected
+        reason: Catálogo dos status, o que pesa nos testes, crítico e morte, como o jogador lê
     notes: Morte no fechamento do turno (applyDeaths), dead_at só no fim da partida, remove_status_effect com hp
   - code_path: internal/domain/match/matchsession/dice.go
     dev_docs:
